@@ -1,0 +1,16 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.order.status_changed",
+  "description": "An order moved along its lifecycle. actor says who moved it: the buyer (owner cancel), staff, or the system (a payment mismatch sends it to needs_review). Key = order id.",
+  "type": "object",
+  "properties": {
+    "order_id": {"type": "string"},
+    "user_id": {"type": "string"},
+    "from": {"type": "string", "enum": ["new", "confirmed", "shipped", "completed", "cancelled", "needs_review"]},
+    "to": {"type": "string", "enum": ["new", "confirmed", "shipped", "completed", "cancelled", "needs_review"]},
+    "actor": {"type": "string", "enum": ["owner", "staff", "system"]},
+    "reason": {"type": "string", "maxLength": 200}
+  },
+  "required": ["order_id", "user_id", "from", "to", "actor"],
+  "additionalProperties": false
+}

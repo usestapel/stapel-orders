@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.order.status",
+  "description": "An order's state for another service. Output: {status, payment_status, user_id, total, currency}; total is a decimal string. Unknown order -> LookupError (FunctionLookupError).",
+  "type": "object",
+  "properties": {
+    "order_id": {"type": ["string", "integer"]}
+  },
+  "required": ["order_id"],
+  "additionalProperties": false
+}

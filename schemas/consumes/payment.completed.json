@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "payment.completed",
+  "description": "A payment for a referenced object completed (provider-agnostic; stapel-billing ask B1 and the PAYMENT='mock' provider emit it). stapel-orders acts only on reference_type == 'order', reference_key = order id. amount is a decimal string; an amount or currency that differs from the order's total sends the order to needs_review.",
+  "type": "object",
+  "properties": {
+    "reference_type": {"type": "string", "maxLength": 32},
+    "reference_key": {"type": "string", "maxLength": 255},
+    "amount": {"type": "string", "pattern": "^-?[0-9]+(\\.[0-9]+)?$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "provider_ref": {"type": "string", "maxLength": 128}
+  },
+  "required": ["reference_type", "reference_key", "amount", "currency", "provider_ref"],
+  "additionalProperties": true
+}

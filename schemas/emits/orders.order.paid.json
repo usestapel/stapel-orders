@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.order.paid",
+  "description": "A payment.completed fact matching the order's total and currency marked the order paid. A convenience fact for projections. Key = order id.",
+  "type": "object",
+  "properties": {
+    "order_id": {"type": "string"},
+    "provider_ref": {"type": "string", "maxLength": 128}
+  },
+  "required": ["order_id", "provider_ref"],
+  "additionalProperties": false
+}

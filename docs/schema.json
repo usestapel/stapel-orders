@@ -1,0 +1,920 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "",
+    "version": "0.0.0"
+  },
+  "paths": {
+    "/orders/api/v1/cart/": {
+      "get": {
+        "operationId": "orders_cart_retrieve",
+        "description": "The caller's cart. Reading it makes no comm call.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "orders_cart_clear",
+        "description": "The caller's cart. Reading it makes no comm call.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/cart/lines/": {
+      "post": {
+        "operationId": "orders_cart_lines_create",
+        "description": "Add a purchasable to the cart (re-priced by its resolver).\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/cart/lines/{line_id}/": {
+      "patch": {
+        "operationId": "orders_cart_lines_update",
+        "description": "Change or remove one line of the caller's cart.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      },
+      "delete": {
+        "operationId": "orders_cart_lines_destroy",
+        "description": "Change or remove one line of the caller's cart.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/checkout/": {
+      "post": {
+        "operationId": "orders_checkout_create",
+        "description": "Turn the cart into an order. Idempotent on ``idempotency_key``.\n\nGuests are admitted by the class gate on purpose: whether a guest may\ncheck out is ``CHECKOUT_REQUIRES_ACCOUNT``, enforced in the body.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/orders/": {
+      "get": {
+        "operationId": "orders_orders_list",
+        "description": "The caller's orders, newest first, anchor-paginated.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "anchor",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Order id to continue after (exclusive)."
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "center",
+                "next",
+                "prev"
+              ]
+            },
+            "description": "Walk direction from the anchor."
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size, default 20, max 100."
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cancelled",
+                  "completed",
+                  "confirmed",
+                  "needs_review",
+                  "new",
+                  "shipped"
+                ]
+              }
+            },
+            "description": "Filter by status (repeatable)."
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/": {
+      "get": {
+        "operationId": "orders_orders_retrieve",
+        "description": "One of the caller's orders; a foreign id is a 404 like an absent one.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/cancel/": {
+      "post": {
+        "operationId": "orders_orders_cancel",
+        "description": "The buyer cancels while the status allows it (OWNER_CANCELLABLE_STATUSES).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/transition/": {
+      "post": {
+        "operationId": "orders_orders_transition",
+        "description": "Staff move an order along the lifecycle.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddressSnapshot": {
+        "type": "object",
+        "properties": {
+          "line1": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "line2": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "region": {
+            "type": "string",
+            "default": "",
+            "maxLength": 100
+          },
+          "postal_code": {
+            "type": "string",
+            "default": "",
+            "maxLength": 20
+          },
+          "country": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Za-z]{2}$"
+          }
+        },
+        "required": [
+          "city",
+          "country",
+          "line1"
+        ]
+      },
+      "CartLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit_price": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3
+          },
+          "line_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "seller_id": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "currency",
+          "id",
+          "image",
+          "line_total",
+          "purchasable_key",
+          "purchasable_type",
+          "quantity",
+          "seller_id",
+          "title",
+          "unit_price",
+          "url"
+        ]
+      },
+      "CartLineAddRequest": {
+        "type": "object",
+        "properties": {
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "default": 1
+          }
+        },
+        "required": [
+          "purchasable_key",
+          "purchasable_type"
+        ]
+      },
+      "CartResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 3
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            }
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "currency",
+          "id",
+          "line_count",
+          "lines",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
+      "CheckoutRequest": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactSnapshot"
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "shipping_method": {
+            "type": "string",
+            "default": "",
+            "maxLength": 32
+          },
+          "comment": {
+            "type": "string",
+            "default": "",
+            "maxLength": 500
+          }
+        },
+        "required": [
+          "contact",
+          "idempotency_key",
+          "shipping_address"
+        ]
+      },
+      "ContactSnapshot": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "email": {
+            "type": "string",
+            "default": "",
+            "maxLength": 254
+          }
+        },
+        "required": [
+          "name",
+          "phone"
+        ]
+      },
+      "OrderLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit_price": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+          },
+          "line_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "seller_id": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "id",
+          "image",
+          "line_total",
+          "purchasable_key",
+          "purchasable_type",
+          "quantity",
+          "seller_id",
+          "title",
+          "unit_price",
+          "url"
+        ]
+      },
+      "OrderPage": {
+        "type": "object",
+        "description": "The AnchorPagination envelope ``GET orders/`` returns (schema only —\nthe view's paginator builds the body).",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderResponse"
+            }
+          },
+          "next_anchor": {
+            "type": "integer",
+            "nullable": true
+          },
+          "prev_anchor": {
+            "type": "integer",
+            "nullable": true
+          },
+          "has_next": {
+            "type": "boolean"
+          },
+          "has_prev": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "has_next",
+          "has_prev",
+          "items",
+          "next_anchor",
+          "prev_anchor"
+        ]
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 16
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatusEnum"
+          },
+          "payment_status": {
+            "$ref": "#/components/schemas/PaymentStatusEnum"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            }
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactSnapshot"
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "shipping_method": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancellable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "cancellable",
+          "comment",
+          "contact",
+          "created_at",
+          "currency",
+          "id",
+          "lines",
+          "number",
+          "payment_status",
+          "shipping_address",
+          "shipping_method",
+          "status",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
+      "OrderStatusEnum": {
+        "enum": [
+          "new",
+          "confirmed",
+          "shipped",
+          "completed",
+          "cancelled",
+          "needs_review"
+        ],
+        "type": "string",
+        "description": "* `new` - New\n* `confirmed` - Confirmed\n* `shipped` - Shipped\n* `completed` - Completed\n* `cancelled` - Cancelled\n* `needs_review` - Needs review"
+      },
+      "OrderTransitionRequest": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "$ref": "#/components/schemas/OrderStatusEnum"
+          },
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "to"
+        ]
+      },
+      "PatchedCartLineUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "maximum": 2147483647,
+            "minimum": 0
+          }
+        }
+      },
+      "PaymentStatusEnum": {
+        "enum": [
+          "unpaid",
+          "pending",
+          "paid",
+          "refunded"
+        ],
+        "type": "string",
+        "description": "* `unpaid` - Unpaid\n* `pending` - Pending\n* `paid` - Paid\n* `refunded` - Refunded"
+      }
+    },
+    "securitySchemes": {
+      "JWTCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stapel_jwt",
+        "description": "JWT token stored in cookie. Login via /auth/admin/ to get the cookie."
+      }
+    }
+  }
+}

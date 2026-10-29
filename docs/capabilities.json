@@ -1,0 +1,165 @@
+{
+  "module": "stapel-orders",
+  "version": "0.1.0",
+  "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact.",
+  "axes": [
+    {
+      "key": "CHECKOUT_REQUIRES_ACCOUNT",
+      "kind": "bool",
+      "default": true,
+      "group": "orders.checkout",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "true: POST checkout/ answers error.403.checkout_requires_account to a guest session; false: guests check out like anyone else."
+      },
+      "curated": {
+        "summary": "Whether a shopper must have an account to place an order. true (default): a guest can fill a cart but is asked to sign in at checkout, and the guest cart joins the account on sign-in. false: guests can place orders too. Values: true, false.",
+        "business_label": "Guest checkout"
+      }
+    },
+    {
+      "key": "PAYMENT",
+      "kind": "enum",
+      "default": "none",
+      "group": "orders.payment",
+      "gates": {
+        "operations": [],
+        "co_gates": [],
+        "behavior": "none: payment_status stays unpaid; mock: payment.completed is emitted in the checkout transaction and the consumer marks the order paid (system check E002 outside the prototype posture stage)."
+      },
+      "curated": {
+        "summary": "none (default): orders arrive unpaid and the shop confirms them by hand. mock: every order is marked paid at once with no money moving, for prototypes only. A real payment provider registers its own name. Values: none, mock.",
+        "business_label": "How orders are paid"
+      }
+    }
+  ],
+  "extension_points": [
+    {
+      "name": "PURCHASABLE_TYPES",
+      "kind": "merge_registry",
+      "summary": "What can be bought. {type_name: {'resolve': '<comm function>'}} merged over the empty built-ins; None removes a type. The resolver is one keyed batch for every type ({keys} -> {key: {title, price, currency, available, max_quantity, seller_id, image, url}}), so a custom app registers its product type in about twenty lines and orders never imports its model."
+    },
+    {
+      "name": "PAYMENT",
+      "kind": "strategy",
+      "summary": "How an order is paid: a short name from the payment registry (none, mock, plus register_payment_provider names) or a dotted path. The provider starts a payment inside the checkout transaction; the outcome always arrives as payment.completed, which is the only path that marks an order paid."
+    },
+    {
+      "name": "TOTAL_BASE_CONVERTER",
+      "kind": "strategy",
+      "summary": "Dotted path (amount, currency, base) -> Decimal | None computing Order.total_base for reporting. Default asks currencies.convert by name; no answer stores NULL, never a guess."
+    },
+    {
+      "name": "STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER",
+      "kind": "presenter",
+      "summary": "Swap keys (STAPEL_SWAP) for the cart and order response presenters, so a host changes what the API shows without forking a view."
+    },
+    {
+      "name": "orders.order.placed",
+      "kind": "comm_event",
+      "summary": "An order was placed; carries its lines (type, key, quantity, unit price, seller) and no personal data, so a product owner can decrement stock and a seller can be told."
+    },
+    {
+      "name": "orders.order.status_changed",
+      "kind": "comm_event",
+      "summary": "Every lifecycle move, with the actor (owner, staff, system) and an optional reason."
+    },
+    {
+      "name": "payment.completed",
+      "kind": "comm_event",
+      "summary": "Consumed: reference_type 'order' marks the order paid when amount and currency match its total, and sends it to needs_review when they do not."
+    }
+  ],
+  "surface": [
+    {
+      "name": "active_provider",
+      "kind": "factory",
+      "path": "stapel_orders.payment.active_provider",
+      "intent": "The provider this deployment runs (orders_settings.PAYMENT)."
+    },
+    {
+      "name": "payment_names",
+      "kind": "predicate",
+      "path": "stapel_orders.payment.payment_names",
+      "intent": "The short names PAYMENT accepts; also the environment vocabulary."
+    },
+    {
+      "name": "register_payment_provider",
+      "kind": "factory",
+      "path": "stapel_orders.payment.register_payment_provider",
+      "intent": "Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome still arrives as payment.completed."
+    },
+    {
+      "name": "reset_payment_providers",
+      "kind": "factory",
+      "path": "stapel_orders.payment.reset_payment_providers",
+      "intent": "Drop registered providers — a test lever."
+    },
+    {
+      "name": "resolve_payment",
+      "kind": "factory",
+      "path": "stapel_orders.payment.resolve_payment",
+      "intent": "Turn a PAYMENT value (short name or dotted path) into a provider; the AppSettings resolver for the key."
+    },
+    {
+      "name": "get_purchasable_types",
+      "kind": "predicate",
+      "path": "stapel_orders.registry.get_purchasable_types",
+      "intent": "The effective registry (built-ins <- settings <- runtime). Ask it instead of reading the setting, which misses runtime registrations."
+    },
+    {
+      "name": "register_purchasable_type",
+      "kind": "factory",
+      "path": "stapel_orders.registry.register_purchasable_type",
+      "intent": "Declare a purchasable type and its resolver Function from an AppConfig.ready() (or a test). The registry ships empty; this and STAPEL_ORDERS['PURCHASABLE_TYPES'] are the only two ways in, and both replace hand-building a cart for a custom product. entry=None removes a type a lower layer provided."
+    },
+    {
+      "name": "reset_purchasable_types",
+      "kind": "factory",
+      "path": "stapel_orders.registry.reset_purchasable_types",
+      "intent": "Drop runtime registrations, leaving settings untouched — a test lever. Product code calling it is undoing a registration that belongs in settings."
+    },
+    {
+      "name": "resolve",
+      "kind": "gate_function",
+      "path": "stapel_orders.registry.resolve",
+      "intent": "Resolve keys of one type in one call through the transport, validated against the purchasables contract. Raises ResolverUnavailable instead of guessing; orders answers 503 on it."
+    },
+    {
+      "name": "resolve_many",
+      "kind": "gate_function",
+      "path": "stapel_orders.registry.resolve_many",
+      "intent": "resolve() over (type, key) pairs, one call per type."
+    },
+    {
+      "name": "resolver_name",
+      "kind": "predicate",
+      "path": "stapel_orders.registry.resolver_name",
+      "intent": "The comm Function name that resolves a type, or UnknownPurchasableType."
+    }
+  ],
+  "operations_total": 10,
+  "requires": [
+    {
+      "module": "stapel-core",
+      "optional": false,
+      "reason": "comm bus (orders.* emits, resolver and status Functions, user.merged and payment.completed consumers), AnchorPagination, GDPR owner protocol, posture stage, AppSettings"
+    },
+    {
+      "module": "stapel-auth",
+      "optional": true,
+      "reason": "the cart is keyed on request.user, and a guest is a stapel-auth anonymous account; user.merged folds a guest's cart into the account on sign-in"
+    },
+    {
+      "module": "stapel-listings",
+      "optional": true,
+      "reason": "answers listings.purchasables, the resolver of the 'listing' purchasable type the stapel-shop preset registers"
+    },
+    {
+      "module": "stapel-currencies",
+      "optional": true,
+      "reason": "currencies.convert fills Order.total_base for reporting; without it total_base stays NULL"
+    }
+  ]
+}

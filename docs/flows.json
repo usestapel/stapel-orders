@@ -1,0 +1,215 @@
+[
+  {
+    "id": "orders.cart",
+    "title": "Fill a cart",
+    "title_key": "flow.orders.cart.title",
+    "description": "A shopper, guest or signed in, adds purchasables to a cart, changes quantities and removes lines. Each line is a snapshot taken from the purchasable's resolver when it was added; reading the cart never asks the product owner.",
+    "description_key": "flow.orders.cart.description",
+    "actors": [
+      "Shopper (guest session or account)"
+    ],
+    "steps": [
+      {
+        "kind": "human",
+        "order": 0,
+        "note": "The shopper presses 'Add to cart' on a product page",
+        "note_key": "flow.orders.cart.step.0.note",
+        "ref": ""
+      },
+      {
+        "kind": "http",
+        "order": 1,
+        "note": "Read the cart (zero calls to the product owner)",
+        "note_key": "flow.orders.cart.step.1.note",
+        "ref": "stapel_orders.views.CartView.get",
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/orders/api/v1/cart/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 2,
+        "note": "Add a purchasable; the same pair grows its line",
+        "note_key": "flow.orders.cart.step.2.note",
+        "ref": "stapel_orders.views.CartLinesView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/cart/lines/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 3,
+        "note": "Change a line's quantity (0 removes it)",
+        "note_key": "flow.orders.cart.step.3.note",
+        "ref": "stapel_orders.views.CartLineDetailView.patch",
+        "endpoints": [
+          {
+            "method": "PATCH",
+            "path": "/orders/api/v1/cart/lines/<int:line_id>/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 4,
+        "note": "Remove a line",
+        "note_key": "flow.orders.cart.step.4.note",
+        "ref": "stapel_orders.views.CartLineDetailView.delete",
+        "endpoints": [
+          {
+            "method": "DELETE",
+            "path": "/orders/api/v1/cart/lines/<int:line_id>/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 5,
+        "note": "Empty the cart",
+        "note_key": "flow.orders.cart.step.5.note",
+        "ref": "stapel_orders.views.CartView.delete",
+        "endpoints": [
+          {
+            "method": "DELETE",
+            "path": "/orders/api/v1/cart/"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "orders.fulfilment",
+    "title": "Fulfil an order",
+    "title_key": "flow.orders.fulfilment.title",
+    "description": "Staff confirm, ship, complete or cancel orders; a payment that does not match the order sends it to review.",
+    "description_key": "flow.orders.fulfilment.description",
+    "actors": [
+      "Staff"
+    ],
+    "steps": [
+      {
+        "kind": "http",
+        "order": 1,
+        "note": "Confirm, ship, complete or cancel",
+        "note_key": "flow.orders.fulfilment.step.1.note",
+        "ref": "stapel_orders.views.OrderTransitionView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/orders/<int:order_id>/transition/"
+          }
+        ]
+      },
+      {
+        "kind": "action",
+        "order": 2,
+        "note": "Every status move is announced",
+        "note_key": "flow.orders.fulfilment.step.2.note",
+        "ref": "orders.order.status_changed"
+      }
+    ]
+  },
+  {
+    "id": "orders.history",
+    "title": "Follow my orders",
+    "title_key": "flow.orders.history.title",
+    "description": "The buyer pages through their orders, opens one, and may cancel it while its status allows.",
+    "description_key": "flow.orders.history.description",
+    "actors": [
+      "Buyer"
+    ],
+    "steps": [
+      {
+        "kind": "http",
+        "order": 1,
+        "note": "Page through the order history",
+        "note_key": "flow.orders.history.step.1.note",
+        "ref": "stapel_orders.views.OrderListView.get",
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/orders/api/v1/orders/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 2,
+        "note": "Open one order",
+        "note_key": "flow.orders.history.step.2.note",
+        "ref": "stapel_orders.views.OrderDetailView.get",
+        "endpoints": [
+          {
+            "method": "GET",
+            "path": "/orders/api/v1/orders/<int:order_id>/"
+          }
+        ]
+      },
+      {
+        "kind": "http",
+        "order": 3,
+        "note": "Cancel an order that is still new",
+        "note_key": "flow.orders.history.step.3.note",
+        "ref": "stapel_orders.views.OrderCancelView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/orders/<int:order_id>/cancel/"
+          }
+        ]
+      }
+    ]
+  },
+  {
+    "id": "orders.purchase",
+    "title": "Check out",
+    "title_key": "flow.orders.purchase.title",
+    "description": "The shopper submits contact and shipping details. Every line is re-priced; a changed price refreshes the cart and asks again. The order is placed, the cart emptied, and the payment provider started in one transaction.",
+    "description_key": "flow.orders.purchase.description",
+    "actors": [
+      "Shopper with an account (guests when CHECKOUT_REQUIRES_ACCOUNT is off)"
+    ],
+    "steps": [
+      {
+        "kind": "human",
+        "order": 1,
+        "note": "The shopper opens checkout from the cart",
+        "note_key": "flow.orders.purchase.step.1.note",
+        "ref": ""
+      },
+      {
+        "kind": "http",
+        "order": 2,
+        "note": "Submit contact and address; the order is placed",
+        "note_key": "flow.orders.purchase.step.2.note",
+        "ref": "stapel_orders.views.CheckoutView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/checkout/"
+          }
+        ]
+      },
+      {
+        "kind": "action",
+        "order": 3,
+        "note": "The placed order is announced with its lines",
+        "note_key": "flow.orders.purchase.step.3.note",
+        "ref": "orders.order.placed"
+      },
+      {
+        "kind": "action",
+        "order": 4,
+        "note": "A payment fact marks the order paid",
+        "note_key": "flow.orders.purchase.step.4.note",
+        "ref": "payment.completed"
+      }
+    ]
+  }
+]

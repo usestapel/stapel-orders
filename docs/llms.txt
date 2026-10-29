@@ -1,0 +1,140 @@
+# stapel-orders 0.1.0
+
+Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact.
+
+Contract: axes 2 · surface 11 · extension points 7 · operations 10 · error codes 54 · flows 4.
+Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
+
+## Configuration axes — what a product switches on
+Settings keys; `default` is what you get by saying nothing. Turning an axis off unmounts the operations it gates.
+- CHECKOUT_REQUIRES_ACCOUNT [bool, default true] — Guest checkout
+  Whether a shopper must have an account to place an order. true (default): a guest can fill a cart but is asked to sign in at checkout, and the guest cart joins the account on sign-in. false: guests can place orders too. Values: true, false.
+- PAYMENT [enum, default "none"] — How orders are paid
+  none (default): orders arrive unpaid and the shop confirms them by hand. mock: every order is marked paid at once with no money moving, for prototypes only. A real payment provider registers its own name. Values: none, mock.
+
+## Usage surface — call these before writing your own
+This is the answer to "does Stapel already have something for X?". `instead of` names the outside symbol this one displaces.
+### gate_function
+- resolve — stapel_orders.registry.resolve
+  Resolve keys of one type in one call through the transport, validated against the purchasables contract. Raises ResolverUnavailable instead of guessing; orders answers 503 on it.
+- resolve_many — stapel_orders.registry.resolve_many
+  resolve() over (type, key) pairs, one call per type.
+### predicate
+- get_purchasable_types — stapel_orders.registry.get_purchasable_types
+  The effective registry (built-ins <- settings <- runtime). Ask it instead of reading the setting, which misses runtime registrations.
+- payment_names — stapel_orders.payment.payment_names
+  The short names PAYMENT accepts; also the environment vocabulary.
+- resolver_name — stapel_orders.registry.resolver_name
+  The comm Function name that resolves a type, or UnknownPurchasableType.
+### factory
+- active_provider — stapel_orders.payment.active_provider
+  The provider this deployment runs (orders_settings.PAYMENT).
+- register_payment_provider — stapel_orders.payment.register_payment_provider
+  Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome still arrives as payment.completed.
+- register_purchasable_type — stapel_orders.registry.register_purchasable_type
+  Declare a purchasable type and its resolver Function from an AppConfig.ready() (or a test). The registry ships empty; this and STAPEL_ORDERS['PURCHASABLE_TYPES'] are the only two ways in, and both replace hand-building a cart for a custom product. entry=None removes a type a lower layer provided.
+- reset_payment_providers — stapel_orders.payment.reset_payment_providers
+  Drop registered providers — a test lever.
+- reset_purchasable_types — stapel_orders.registry.reset_purchasable_types
+  Drop runtime registrations, leaving settings untouched — a test lever. Product code calling it is undoing a registration that belongs in settings.
+- resolve_payment — stapel_orders.payment.resolve_payment
+  Turn a PAYMENT value (short name or dotted path) into a provider; the AppSettings resolver for the key.
+
+## Extension points — what a product replaces, fork-free
+- PAYMENT [strategy]
+  How an order is paid: a short name from the payment registry (none, mock, plus register_payment_provider names) or a dotted path. The provider starts a payment inside the checkout transaction; the outcome always arrives as payment.completed, which is the only path that marks an order paid.
+- PURCHASABLE_TYPES [merge_registry]
+  What can be bought. {type_name: {'resolve': '<comm function>'}} merged over the empty built-ins; None removes a type. The resolver is one keyed batch for every type ({keys} -> {key: {title, price, currency, available, max_quantity, seller_id, image, url}}), so a custom app registers its product type in about twenty lines and orders never imports its model.
+- STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER [presenter]
+  Swap keys (STAPEL_SWAP) for the cart and order response presenters, so a host changes what the API shows without forking a view.
+- TOTAL_BASE_CONVERTER [strategy]
+  Dotted path (amount, currency, base) -> Decimal | None computing Order.total_base for reporting. Default asks currencies.convert by name; no answer stores NULL, never a guess.
+- orders.order.placed [comm_event]
+  An order was placed; carries its lines (type, key, quantity, unit price, seller) and no personal data, so a product owner can decrement stock and a seller can be told.
+- orders.order.status_changed [comm_event]
+  Every lifecycle move, with the actor (owner, staff, system) and an optional reason.
+- payment.completed [comm_event]
+  Consumed: reference_type 'order' marks the order paid when amount and currency match its total, and sends it to needs_review when they do not.
+
+## Fits with — fleet dependencies
+- stapel-auth (optional) — the cart is keyed on request.user, and a guest is a stapel-auth anonymous account; user.merged folds a guest's cart into the account on sign-in
+- stapel-core (required) — comm bus (orders.* emits, resolver and status Functions, user.merged and payment.completed consumers), AnchorPagination, GDPR owner protocol, posture stage, AppSettings
+- stapel-currencies (optional) — currencies.convert fills Order.total_base for reporting; without it total_base stays NULL
+- stapel-listings (optional) — answers listings.purchasables, the resolver of the 'listing' purchasable type the stapel-shop preset registers
+
+## HTTP operations (10) — call by operationId, never by a typed path
+Paths are relative to `/orders/api/v1/`.
+### Orders
+- DELETE /cart/ — orders_cart_clear
+- POST /cart/lines/ — orders_cart_lines_create
+- DELETE /cart/lines/{line_id}/ — orders_cart_lines_destroy
+- PATCH /cart/lines/{line_id}/ — orders_cart_lines_update
+- GET /cart/ — orders_cart_retrieve
+- POST /checkout/ — orders_checkout_create
+- POST /orders/{order_id}/cancel/ — orders_orders_cancel
+- GET /orders/ — orders_orders_list
+- GET /orders/{order_id}/ — orders_orders_retrieve
+- POST /orders/{order_id}/transition/ — orders_orders_transition
+
+## Error codes (54) — the StapelError envelope
+Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
+- error.400.bad_request [400] fix_input
+- error.400.captcha_invalid [400] retry
+- error.400.captcha_required [400] retry
+- error.400.cart_empty [400] fix_input
+- error.400.expected_list [400] fix_input
+- error.400.field.blank [400] fix_input {field}
+- error.400.field.does_not_exist [400] fix_input {field}
+- error.400.field.invalid [400] fix_input {field}
+- error.400.field.invalid_choice [400] fix_input {field}
+- error.400.field.max_length [400] fix_input {field,max_length}
+- error.400.field.max_value [400] fix_input {field,max_value}
+- error.400.field.min_length [400] fix_input {field,min_length}
+- error.400.field.min_value [400] fix_input {field,min_value}
+- error.400.field.null [400] fix_input {field}
+- error.400.field.required [400] fix_input {field}
+- error.400.field.unique [400] fix_input {field}
+- error.400.invalid_ad_id [400] fix_input
+- error.400.purchasable_type_unknown [400] fix_input
+- error.400.purchasable_unknown [400] fix_input
+- error.400.validation_error [400] fix_input
+- error.400.verification_failed [400] verify
+- error.400.verification_invalid_factor [400] verify
+- error.401.unauthorized [401] reauthenticate
+- error.402.payment_required [402] retry
+- error.403.checkout_requires_account [403] reauthenticate
+- error.403.forbidden [403] retry
+- error.403.network_blocked [403] contact_support
+- error.403.verification_enrollment_required [403] verify
+- error.403.verification_required [403] verify
+- error.404.ad_not_found [404] retry
+- error.404.cart_line_not_found [404] retry
+- error.404.not_found [404] retry
+- error.404.order_not_found [404] retry
+- error.404.verification_challenge_not_found [404] verify
+- error.405.method_not_allowed [405] retry
+- error.406.not_acceptable [406] retry
+- error.408.request_timeout [408] retry
+- error.409.cart_currency_mismatch [409] fix_input
+- error.409.cart_price_changed [409] retry
+- error.409.cart_too_many_lines [409] fix_input {max}
+- error.409.conflict [409] fix_input
+- error.409.order_transition_invalid [409] fix_input {from,to}
+- error.409.purchasable_unavailable [409] fix_input
+- error.410.gone [410] retry
+- error.413.payload_too_large [413] retry
+- error.415.unsupported_media_type [415] retry
+- error.422.unprocessable_entity [422] wait_and_retry
+- error.423.locked [423] wait_and_retry
+- error.423.verification_locked [423] wait_and_retry
+- error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
+- error.429.too_many_requests [429] wait_and_retry
+- error.500.internal [500] contact_support
+- error.503.mandate_unavailable [503] retry
+- error.503.purchasable_unavailable [503] wait_and_retry
+
+## Documented flows (4) — full steps in docs/flows.json
+- orders.cart — Fill a cart
+- orders.fulfilment — Fulfil an order
+- orders.history — Follow my orders
+- orders.purchase — Check out

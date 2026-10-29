@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.cart.count",
+  "description": "How many lines a user's cart holds (a badge for another surface). Output: {line_count: int}.",
+  "type": "object",
+  "properties": {
+    "user_id": {"type": "string"}
+  },
+  "required": ["user_id"],
+  "additionalProperties": false
+}

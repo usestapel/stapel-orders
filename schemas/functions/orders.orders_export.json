@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.orders_export",
+  "description": "Cursor-paged snapshot of orders (the source_of_truth shape a composite projects from, e.g. orders per seller). Output: {rows: [{order_id, number, user_id, status, payment_status, currency, total, placed_at, lines: [{purchasable_type, purchasable_key, quantity, unit_price, seller_id}], seq}], cursor: str|null, total: int}. No contact or address.",
+  "type": "object",
+  "properties": {
+    "cursor": {"type": ["string", "null"]},
+    "limit": {"type": "integer", "minimum": 1, "maximum": 500}
+  },
+  "additionalProperties": false
+}
