@@ -209,8 +209,8 @@ def test_a_checkout_refused_before_reserve_leaves_no_orphan(auth_client, catalog
     assert resp.status_code == 409
     assert resp.json()["localizable_error"] == "error.409.total_changed"
     assert stock.ops("reserve") == []
-    assert list(CheckoutHookState.objects.values_list("state", flat=True)) == [
-        HookState.RELEASED
+    assert list(CheckoutHookState.objects.values_list("state", "release_reason")) == [
+        (HookState.RELEASED, "unsent")
     ]
     counts = hook_service.sweep(now=timezone.now() + LATER)
     assert counts["orphans_released"] == 0

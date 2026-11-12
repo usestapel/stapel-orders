@@ -51,6 +51,8 @@ logger = logging.getLogger(__name__)
 REASON_CHECKOUT_FAILED = "checkout_failed"
 REASON_CANCELLED = "cancelled"
 REASON_ORPHANED = "orphaned"
+#: Recorded (never sent) on a row closed without a reserve, see drop_unsent.
+REASON_UNSENT = "unsent"
 
 EV_REUSE = "reuse"
 EV_PLACE = "place"
@@ -156,6 +158,7 @@ def drop_unsent(attempt_key, written: list[str], reserved: list[str]) -> int:
             attempt_key=attempt_key, name__in=unsent, order__isnull=True
         ),
         EV_UNSENT,
+        release_reason=REASON_UNSENT,
     )
 
 
@@ -391,6 +394,7 @@ __all__ = [
     "REASON_CANCELLED",
     "REASON_CHECKOUT_FAILED",
     "REASON_ORPHANED",
+    "REASON_UNSENT",
     "ROW_TRANSITIONS",
     "commit_for_order",
     "drop_unsent",
