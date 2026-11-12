@@ -76,6 +76,13 @@ the machine form.
     hyphenated UUID string. A key already used by another user is refused
     409 `error.409.checkout_attempt_conflict`.
 
+## Wiring
+
+19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for
+    composites today (`_wiring.render_preset_defaults`); companion bricks
+    need the registry/wiring to merge their `preset.SETTINGS_DEFAULTS` too
+    (stapel-tools follow-up). Hand-wired hosts paste the fragment.
+
 ## Accepted follow-ups (foreman, 2026-11-12)
 
 20. `orders.order.placed` carries `attempt_key` (lowercase hyphenated UUID,
@@ -124,7 +131,9 @@ the machine form.
     commit. Orders' side: it never sends `checkout_failed` or `orphaned` for
     a pair it recorded as placed or committed (those reasons are claimed
     only from `pending`), and a checkout refused before the reserve step
-    sends no release at all (no reserve was sent).
+    sends no release at all (no reserve was sent): its hook rows are closed
+    as `released` with `release_reason` `unsent`, a value that is recorded
+    only and never sent as a release `reason`.
 
 ## Cart line attrs (foreman 2026-11-12)
 
@@ -150,9 +159,44 @@ the machine form.
     the first adjustment of kind `shipping` (non-personal, ≤ 32 chars);
     without one, the client's `shipping_method` stays.
 
-## Wiring
+## Actor and user (D5, decided 2026-11-12)
 
-19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for
-    composites today (`_wiring.render_preset_defaults`); companion bricks
-    need the registry/wiring to merge their `preset.SETTINGS_DEFAULTS` too
-    (stapel-tools follow-up). Hand-wired hosts paste the fragment.
+29. Every adjuster and checkout-hook payload (quote request, `reserve`,
+    `commit`, `release`) carries `actor_id` (the acting account id, guest or
+    real, always present) next to `user_id`, which is **null for a guest on
+    all of them** (items 3 and 12 agree: `commit` no longer sends the
+    guest's id; `release` gains both keys). `orders.order.placed` carries
+    `actor_id` as well; its `user_id` stays the stored account id (a
+    guest's included), because nulling it would break released consumers.
+    The new properties are optional in `schemas/functions/*.json` and the
+    placed schema. The request schemas say `additionalProperties: false`:
+    a companion that validates orders' payloads against an older copy of
+    them must take the new files (and should not ship a copy at all).
+
+## Refund (O1, 2026-11-12)
+
+30. A staff refund (`POST orders/<id>/refund/`, or `transition` to
+    `refunded`) of a paid order moves `status` and `payment_status` to
+    `refunded`, a new value in `orders.order.status_changed` `from`/`to`
+    and in `OrderStatusEnum`, and emits `orders.order.refunded`
+    `{order_id, attempt_key?, user_id | null, total, currency}` once. The
+    PAYMENT provider's `refund(order, emit)` runs first; a provider without
+    one refuses with `error.409.refund_unsupported`, and an order that is
+    not paid with `error.409.order_not_refundable`. Every checkout hook gets
+    `release` with reason **`cancelled`** exactly once (no new reason
+    value): companions undo a refunded order the way they undo a cancelled
+    one, from any status but cancelled (a shipped or completed order may be
+    refunded). A second refund is a no-op (no second fact, release or
+    provider call). A cancelled order cannot be refunded (refused as an
+    invalid transition, `error.409.order_transition_invalid`) and a
+    refunded one cannot be cancelled. Partial refunds are out of scope.
+
+## Hook and adjuster order, notification type (O1)
+
+31. Reserve runs in ascending `order` (ties by name) and release in
+    reverse, on failure and on cancel or refund. The companions ship
+    inventory 50, promotions 100 (adjuster 100 and hook 100) and delivery
+    200 (adjuster 200 and hook 200). The notification type `orders.refunded`
+    (variables as `orders.status_changed` plus `reason`) needs a routing
+    entry, template and translation keys in stapel-notifications (ask, like
+    `orders.placed`); until then the send is best-effort and dropped.
