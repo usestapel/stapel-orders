@@ -75,6 +75,12 @@ class CartLineSerializer(serializers.Serializer):
     image = serializers.CharField(max_length=m.URL_MAX_LENGTH, allow_null=True)
     url = serializers.CharField(max_length=m.URL_MAX_LENGTH, allow_null=True)
     seller_id = serializers.CharField(max_length=m.SELLER_ID_MAX_LENGTH, allow_null=True)
+    attrs = serializers.DictField(
+        help_text="Resolver fields beyond the purchasables contract (string, number, "
+                  "bool or null values), snapshotted with the line: what adjusters and "
+                  "checkout hooks receive as lines[].attrs, e.g. weight_grams for a "
+                  "delivery quote.",
+    )
 
 
 class CartResponseSerializer(serializers.Serializer):

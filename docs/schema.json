@@ -630,9 +630,15 @@
             "type": "string",
             "nullable": true,
             "maxLength": 64
+          },
+          "attrs": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Resolver fields beyond the purchasables contract (string, number, bool or null values), snapshotted with the line: what adjusters and checkout hooks receive as lines[].attrs, e.g. weight_grams for a delivery quote."
           }
         },
         "required": [
+          "attrs",
           "currency",
           "id",
           "image",

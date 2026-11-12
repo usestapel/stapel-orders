@@ -42,7 +42,10 @@ additive fields.
   as a lowercase hyphenated UUID; optional in the schema), so a companion
   finds its checkout-hook intent from the fact.
 - `CartLine.attrs`: resolver fields beyond the purchasables contract
-  (scalars, ≤ 32), handed to adjusters and hooks as `lines[].attrs`.
+  (scalars, ≤ 32), handed to adjusters and hooks as `lines[].attrs`, and
+  shown on every cart line of the API (`CartLine.attrs`, always present,
+  `{}` when none) so a client quotes delivery with the same values. Order
+  lines do not snapshot attrs.
 - Settings `MAX_ADJUSTMENTS` (20, part of the E005 money proof) and
   `CHECKOUT_HOOK_ORPHAN_SECONDS`; checks E006 / E007 (malformed entries),
   W003 (an adjuster or hook Function unreachable here).

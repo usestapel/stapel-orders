@@ -26,6 +26,10 @@ class CartLineDTO:
     image: Optional[str]
     url: Optional[str]
     seller_id: Optional[str]
+    #: Resolver fields beyond the purchasables contract (scalars), as
+    #: snapshotted at add/checkout — what adjusters and hooks see as
+    #: ``lines[].attrs`` (e.g. ``weight_grams`` for a delivery quote).
+    attrs: dict = field(default_factory=dict)
 
 
 @dataclass

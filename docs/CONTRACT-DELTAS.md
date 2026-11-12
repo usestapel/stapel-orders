@@ -126,6 +126,14 @@ the machine form.
     only from `pending`), and a checkout refused before the reserve step
     sends no release at all (no reserve was sent).
 
+## Cart line attrs (foreman 2026-11-12)
+
+27. `attrs` (item 2) is on every cart line of the API responses (`GET/DELETE
+    cart/`, the line endpoints, `cart/quote/`; always present, `{}` when the
+    resolver answered nothing extra), exactly the dict adjusters and hooks
+    receive as `lines[].attrs`. Order lines do not snapshot attrs, so
+    `OrderLine` has none.
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

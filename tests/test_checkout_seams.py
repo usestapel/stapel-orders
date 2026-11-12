@@ -143,6 +143,21 @@ class TestAdjusters:
         assert first["index"] == 0 and first["quantity"] == 2
         assert first["attrs"] == {"weight_grams": 1250}
 
+    def test_cart_lines_show_the_attrs_the_adjusters_see(self, filled, catalog):
+        """The browser quotes delivery options with the same attrs the server
+        quote sends (weight_grams, shippable)."""
+        catalog.items["a"]["weight_grams"] = 1250
+        catalog.items["a"]["shippable"] = True
+        resp = filled.post(LINES, {"purchasable_type": "item", "purchasable_key": "a",
+                                   "quantity": 1}, format="json")
+        lines = {line["purchasable_key"]: line for line in resp.json()["lines"]}
+        assert lines["a"]["attrs"] == {"weight_grams": 1250, "shippable": True}
+        assert lines["b"]["attrs"] == {}
+        cart = filled.get(V1 + "/cart/").json()
+        assert [line["attrs"] for line in cart["lines"]] == [
+            lines[line["purchasable_key"]]["attrs"] for line in cart["lines"]
+        ]
+
     def test_checkout_snapshots_adjustments_and_total(self, filled, installed, captured_events):
         promo_and_shipping(installed)
         resp = filled.post(CHECKOUT, body(codes=["SAVE10"], delivery={"method": "courier"}),

@@ -60,6 +60,7 @@ class CartPresenter:
                 image=_or_none(line.image),
                 url=_or_none(line.url),
                 seller_id=_or_none(line.seller_id),
+                attrs=dict(line.attrs or {}),
             )
             for line in rows
         ]
