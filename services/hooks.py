@@ -11,6 +11,9 @@ One ``CheckoutHookState`` row per ``(attempt_key, hook name)``:
   as the order, and schedules ``commit`` after it commits.
 - :func:`release_now` releases what this attempt reserved when the checkout
   fails; :func:`release_for_order` does it on cancel.
+- :func:`drop_unsent` closes rows this attempt wrote but never sent a
+  reserve for (a checkout refused before the reserve step), without calling
+  the companion.
 - :func:`sweep` retries unanswered commits and releases and releases orphans.
 
 Every call is idempotent on ``(attempt_key, name)`` at the hook's side; a
@@ -56,6 +59,7 @@ EV_CANCEL = "cancel"
 EV_FAIL = "fail"
 EV_ORPHAN = "orphan"
 EV_RELEASED = "released"
+EV_UNSENT = "unsent"
 
 #: event -> (states it may leave, state it enters). Absent pairs are illegal.
 ROW_TRANSITIONS: dict[str, tuple[frozenset, str]] = {
@@ -70,6 +74,8 @@ ROW_TRANSITIONS: dict[str, tuple[frozenset, str]] = {
     EV_FAIL: (frozenset({HookState.PENDING}), HookState.RELEASING),
     EV_ORPHAN: (frozenset({HookState.PENDING}), HookState.RELEASING),
     EV_RELEASED: (frozenset({HookState.RELEASING}), HookState.RELEASED),
+    # written by this attempt, reserve never sent: closed without a call
+    EV_UNSENT: (frozenset({HookState.PENDING}), HookState.RELEASED),
 }
 
 
@@ -90,14 +96,15 @@ def _entries() -> dict[str, dict]:
     return dict(seams.get_checkout_hooks())
 
 
-def prepare(attempt_key, user_id: str) -> list[str]:
+def prepare(attempt_key, user_id: str, written: list[str] | None = None) -> list[str]:
     """Durable ``pending`` rows for every registered hook; names to reserve.
 
     A row of this attempt key that is placed or committed belongs to an
     order (a twin got there first): it is neither touched nor reserved
     again. A pending one is reserved without a write; a released one is
     reused. A failed attempt's release that is still unanswered is finished
-    first, or the checkout is refused (fail closed).
+    first, or the checkout is refused (fail closed). *written* collects the
+    names whose row this call created or reused (see :func:`drop_unsent`).
     """
     names = []
     for name, _entry in seams.get_checkout_hooks():
@@ -117,7 +124,11 @@ def prepare(attempt_key, user_id: str) -> list[str]:
                     ))
                     if not created:
                         continue  # moved under us: read it again
-            if created or state == HookState.PENDING:
+            if created:
+                names.append(name)
+                if written is not None:
+                    written.append(name)
+            elif state == HookState.PENDING:
                 names.append(name)
             elif state == HookState.RELEASING and row.order_id is None:
                 if not _release(row, row.release_reason or REASON_CHECKOUT_FAILED):
@@ -127,6 +138,25 @@ def prepare(attempt_key, user_id: str) -> list[str]:
         else:
             raise OrdersError(503, ERR_503_CHECKOUT_HOOK_UNAVAILABLE, {"hook": name})
     return names
+
+
+def drop_unsent(attempt_key, written: list[str], reserved: list[str]) -> int:
+    """Close rows this attempt wrote but sent no reserve for; no companion call.
+
+    A checkout refused before the reserve step (empty cart, a price change,
+    an adjuster's error, a changed total) or answered as a replay would
+    otherwise leave ``pending`` rows for the orphan sweep to release pairs
+    that were never reserved.
+    """
+    unsent = [name for name in written if name not in reserved]
+    if not unsent:
+        return 0
+    return move(
+        CheckoutHookState.objects.filter(
+            attempt_key=attempt_key, name__in=unsent, order__isnull=True
+        ),
+        EV_UNSENT,
+    )
 
 
 def _refusal(name: str, reply: dict) -> OrdersError | None:
@@ -355,6 +385,7 @@ __all__ = [
     "REASON_ORPHANED",
     "ROW_TRANSITIONS",
     "commit_for_order",
+    "drop_unsent",
     "mark_placed",
     "move",
     "prepare",

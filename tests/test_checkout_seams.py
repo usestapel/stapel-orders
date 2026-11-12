@@ -443,8 +443,8 @@ class TestConcurrentAttempts:
         real_prepare = hook_service.prepare
         state = {"twin": None}
 
-        def prepare_then_twin(attempt_key, user_id):
-            names = real_prepare(attempt_key, user_id)
+        def prepare_then_twin(attempt_key, user_id, written=None):
+            names = real_prepare(attempt_key, user_id, written)
             if state["twin"] is None:
                 state["twin"] = "running"
                 state["twin"] = filled.post(CHECKOUT, body(key), format="json")

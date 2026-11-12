@@ -316,7 +316,8 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address,
         raise OrdersError(400, ERR_400_CART_EMPTY)
     resolved = _resolve_lines(pairs)
 
-    hook_names = hooks.prepare(idempotency_key, user_id)
+    written: list[str] = []
+    hook_names = hooks.prepare(idempotency_key, user_id, written)
     reserved: list[str] = []
     tokens: dict[str, str] = {}
     refusal_key = None
@@ -378,6 +379,9 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address,
         if reserved:
             hooks.release_now(idempotency_key, reserved, tokens)
         raise
+    finally:
+        if written:
+            hooks.drop_unsent(idempotency_key, written, reserved)
 
     if refusal_key is not None:
         from ..presenters import get_cart_presenter

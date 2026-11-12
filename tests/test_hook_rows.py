@@ -196,3 +196,37 @@ def test_a_failed_twin_never_releases_a_placed_pair(user, stock):
     hook_service.release_now(key, ["stock"], {})
     assert stock.ops("release") == []
     assert CheckoutHookState.objects.get().state == HookState.PLACED
+
+
+# -- refused before the reserve step (D3) -------------------------------------
+
+def test_a_checkout_refused_before_reserve_leaves_no_orphan(auth_client, catalog, stock):
+    """No reserve was sent, so no row is left for the sweep to release."""
+    _fill(auth_client, catalog)
+    resp = auth_client.post(CHECKOUT, {**_body(uuid.uuid4()), "expected_total": "1.00"},
+                            format="json")
+    assert resp.status_code == 409
+    assert resp.json()["localizable_error"] == "error.409.total_changed"
+    assert stock.ops("reserve") == []
+    assert list(CheckoutHookState.objects.values_list("state", flat=True)) == [
+        HookState.RELEASED
+    ]
+    counts = hook_service.sweep(now=timezone.now() + LATER)
+    assert counts["orphans_released"] == 0
+    assert stock.calls == []
+
+
+def test_the_same_key_reserves_after_a_refusal_before_reserve(
+    auth_client, catalog, stock, django_capture_on_commit_callbacks
+):
+    _fill(auth_client, catalog)
+    key = uuid.uuid4()
+    refused = auth_client.post(CHECKOUT, {**_body(key), "expected_total": "1.00"},
+                               format="json")
+    assert refused.status_code == 409
+    with django_capture_on_commit_callbacks(execute=True):
+        placed = auth_client.post(CHECKOUT, {**_body(key), "expected_total": "40.00"},
+                                  format="json")
+    assert placed.status_code == 201, placed.content
+    assert len(stock.ops("reserve")) == 1 and stock.ops("release") == []
+    assert CheckoutHookState.objects.get().state == HookState.COMMITTED

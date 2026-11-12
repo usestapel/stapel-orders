@@ -60,6 +60,22 @@ additive fields.
   the payment consumer reads it and billing's `payment.completed` alike.
 
 ### Fixed
+- **A staggered replay of one attempt key released a live order's
+  companions.** A twin that read a hook row as `pending` while the first
+  order transaction was open wrote that state back after it committed; the
+  orphan sweep then released the order's stock, shipment and promotion use.
+  Hook-row states now move only by conditional UPDATE over one table
+  (`services.hooks.ROW_TRANSITIONS`, `move()`); `placed`/`committed` →
+  `pending` is not an edge; `checkout_failed`/`orphaned` are claimed only
+  from `pending`; the sweep re-checks an orphan under `FOR UPDATE` and adopts
+  a pending row whose attempt key has an order instead of releasing it
+  (sweep counts gain `adopted`). An unanswered release after a failed
+  checkout stays `releasing` and is retried by the sweep; a retry of the key
+  finishes it first or refuses 503.
+- **A checkout refused before the reserve step left `pending` hook rows**,
+  and the sweep later sent orphan releases for pairs never reserved. Rows
+  this attempt wrote but sent no reserve for are closed (`released`) without
+  a companion call.
 - **`PAYMENT="mock"` next to stapel-billing refused every checkout**
   (`payment.completed violates schema: 'user_id' is a required property`).
   `payment.completed` is billing's fact with billing's shape; the mock

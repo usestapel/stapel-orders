@@ -116,6 +116,16 @@ the machine form.
     (`on_action(schema=)` writes the emit registry) and in
     stapel-reservations 0.1.0 (same mock, same consumer schemas).
 
+## Release reasons (decided, foreman 2026-11-12)
+
+26. A `release` whose `reason` is `checkout_failed` or `orphaned` must be a
+    no-op answering `ok: true` at the companion for a pair it has already
+    committed; only `cancelled` (sent on cancel and on refund) undoes a
+    commit. Orders' side: it never sends `checkout_failed` or `orphaned` for
+    a pair it recorded as placed or committed (those reasons are claimed
+    only from `pending`), and a checkout refused before the reserve step
+    sends no release at all (no reserve was sent).
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

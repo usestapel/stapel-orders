@@ -121,10 +121,16 @@ reserve of the same pair reserves anew (a refused checkout is retried with
 the same key). A hook that is registered but unanswered refuses the
 checkout (fail closed, `error.503.checkout_hook_unavailable`).
 `CheckoutHookState` (`pending → placed → committed`, `releasing →
-released`) is written durably BEFORE reserve; the hook sweep
+released`) is written durably BEFORE reserve. Its states move only through
+`services.hooks.move()` over `ROW_TRANSITIONS` (conditional UPDATEs; a row
+never moves backwards, `checkout_failed`/`orphaned` are claimed from
+`pending` only; only cancel/refund undoes a placed or committed pair). Rows
+an attempt wrote but sent no reserve for (refused before the reserve step,
+or a replay) are closed without a companion call. The hook sweep
 (`beat.sweep_checkout_hooks`, `manage.py sweep_checkout_hooks`) retries
 unanswered commits/releases and releases `pending` rows older than
-`CHECKOUT_HOOK_ORPHAN_SECONDS`. Proven under real row locks on PostgreSQL
+`CHECKOUT_HOOK_ORPHAN_SECONDS` (re-checked under `FOR UPDATE`; a pending row
+whose attempt key has an order is adopted, not released). Proven under real row locks on PostgreSQL
 by `tests/test_checkout_hooks_pg.py` (`STAPEL_ORDERS_TEST_PG`).
 
 ### Payment providers (`payment.py`)
