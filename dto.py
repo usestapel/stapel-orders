@@ -123,11 +123,12 @@ class OrderDTO:
     total: Decimal
     lines: list[OrderLineDTO]
     contact: ContactDTO
-    #: None when the delivery companion owns the address.
-    shipping_address: Optional[AddressDTO]
+    shipping_address: AddressDTO
     shipping_method: str
     comment: str
     created_at: datetime.datetime
     updated_at: datetime.datetime
     cancellable: bool
     adjustments: list[AdjustmentDTO] = field(default_factory=list)
+    #: Placed with ``context.delivery``: the companion's address is authoritative.
+    address_from_delivery: bool = False

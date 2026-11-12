@@ -9,6 +9,7 @@ ERR_400_PURCHASABLE_TYPE_UNKNOWN = "error.400.purchasable_type_unknown"
 ERR_400_PURCHASABLE_UNKNOWN = "error.400.purchasable_unknown"
 ERR_400_CART_EMPTY = "error.400.cart_empty"
 ERR_400_CHECKOUT_CONTEXT_TOO_LARGE = "error.400.checkout_context_too_large"
+ERR_400_SHIPPING_ADDRESS_REQUIRED = "error.400.shipping_address_required"
 ERR_403_CHECKOUT_REQUIRES_ACCOUNT = "error.403.checkout_requires_account"
 ERR_404_CART_LINE_NOT_FOUND = "error.404.cart_line_not_found"
 ERR_404_ORDER_NOT_FOUND = "error.404.order_not_found"
@@ -31,6 +32,7 @@ STAPEL_ORDERS_ERRORS = {
     ERR_400_PURCHASABLE_UNKNOWN: "This item is not available for purchase",
     ERR_400_CART_EMPTY: "The cart is empty",
     ERR_400_CHECKOUT_CONTEXT_TOO_LARGE: "The checkout details are larger than {max_bytes} bytes",
+    ERR_400_SHIPPING_ADDRESS_REQUIRED: "Enter a shipping address or choose a delivery option",
     ERR_403_CHECKOUT_REQUIRES_ACCOUNT: "Sign in to place an order",
     ERR_404_CART_LINE_NOT_FOUND: "Cart line not found",
     ERR_404_ORDER_NOT_FOUND: "Order not found",
@@ -67,6 +69,7 @@ __all__ = [
     "ERR_400_PURCHASABLE_UNKNOWN",
     "ERR_400_CART_EMPTY",
     "ERR_400_CHECKOUT_CONTEXT_TOO_LARGE",
+    "ERR_400_SHIPPING_ADDRESS_REQUIRED",
     "ERR_403_CHECKOUT_REQUIRES_ACCOUNT",
     "ERR_404_CART_LINE_NOT_FOUND",
     "ERR_404_ORDER_NOT_FOUND",

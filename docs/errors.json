@@ -188,6 +188,14 @@
     "owner": "stapel_orders"
   },
   {
+    "code": "error.400.shipping_address_required",
+    "status": 400,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "Enter a shipping address or choose a delivery option",
+    "owner": "stapel_orders"
+  },
+  {
     "code": "error.400.validation_error",
     "status": 400,
     "params": [],

@@ -80,10 +80,12 @@ additive fields.
   (commit used to send the guest's id; release gains `user_id`).
   `orders.order.placed.user_id` keeps the stored account id. The new
   properties are optional in the schemas.
-- **The delivery companion owns the address when the checkout `context`
-  carries a `delivery` key**: `shipping_address` is then not required, not
-  validated, not compared and not stored, and `OrderResponse.shipping_address`
-  is `null` (now nullable). Without `delivery` the address stays required.
+- **With a `delivery` key in the checkout `context` the delivery companion's
+  address is authoritative.** `shipping_address` stays required and keeps
+  orders' shape rules; it is stored as the shopper's copy and never compared
+  with the companion's. New `OrderResponse.address_from_delivery` (bool;
+  `Order.address_from_delivery`, migration `0004`) says so. A missing address
+  is `error.400.shipping_address_required` (field `shipping_address`).
   `Order.shipping_method` is taken from the first `shipping` adjustment's
   `code` when one exists (the client's value otherwise).
 

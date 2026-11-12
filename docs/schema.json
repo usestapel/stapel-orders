@@ -862,12 +862,7 @@
             "$ref": "#/components/schemas/ContactSnapshot"
           },
           "shipping_address": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AddressSnapshot"
-              }
-            ],
-            "description": "Required unless context carries a delivery key: then the delivery companion owns the address, and this one is neither required, validated, compared nor stored."
+            "$ref": "#/components/schemas/AddressSnapshot"
           },
           "shipping_method": {
             "type": "string",
@@ -893,7 +888,8 @@
         },
         "required": [
           "contact",
-          "idempotency_key"
+          "idempotency_key",
+          "shipping_address"
         ]
       },
       "ContactSnapshot": {
@@ -1072,13 +1068,11 @@
             "$ref": "#/components/schemas/ContactSnapshot"
           },
           "shipping_address": {
-            "allOf": [
-              {
-                "$ref": "#/components/schemas/AddressSnapshot"
-              }
-            ],
-            "nullable": true,
-            "description": "Null when the delivery companion owns the address (checkout context carried a delivery key)."
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "address_from_delivery": {
+            "type": "boolean",
+            "description": "True when the order was placed with a delivery key in the checkout context: the delivery companion's address is the authoritative one for fulfilment; shipping_address is the shopper's copy, never compared."
           },
           "shipping_method": {
             "type": "string",
@@ -1101,6 +1095,7 @@
           }
         },
         "required": [
+          "address_from_delivery",
           "adjustments",
           "cancellable",
           "comment",

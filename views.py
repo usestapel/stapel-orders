@@ -189,14 +189,14 @@ class CheckoutView(_OrdersView):
             raise refusal
         data = self.validated_request_data(request)
         contact = data["contact"]
-        address = data.get("shipping_address")
+        address = data["shipping_address"]
         order, created = checkout_service.checkout(
             request.user,
             idempotency_key=data["idempotency_key"],
             contact=checkout_service.Contact(
                 name=contact["name"], phone=contact["phone"], email=contact.get("email", "")
             ),
-            address=None if address is None else checkout_service.Address(
+            address=checkout_service.Address(
                 line1=address["line1"],
                 line2=address.get("line2", ""),
                 city=address["city"],

@@ -765,40 +765,44 @@ class TestExpectedTotal:
 
 
 class TestDeliveryOwnsTheAddress:
-    """D4: a ``delivery`` key in the context hands the address to the companion."""
+    """D4: with ``context.delivery`` the companion's address is authoritative;
+    orders still takes the shopper's copy (required, shape-checked, stored,
+    never compared) and flags the order ``address_from_delivery``."""
 
-    def _body(self, key=None, address=None, **context):
-        data = body(key, **context)
-        if address is None:
-            data.pop("shipping_address")
-        else:
-            data["shipping_address"] = address
-        return data
-
-    def test_no_address_is_needed_with_delivery(self, filled, installed):
+    def test_the_shoppers_copy_is_stored_and_the_order_flagged(self, filled, installed):
         installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
-        resp = filled.post(CHECKOUT, self._body(delivery={"method": "courier"}), format="json")
+        resp = filled.post(CHECKOUT, body(delivery={"method": "courier",
+                                                    "address": {"city": "Elsewhere"}}),
+                           format="json")
         assert resp.status_code == 201, resp.content
         order = resp.json()
-        assert order["shipping_address"] is None
+        assert order["address_from_delivery"] is True
+        assert order["shipping_address"]["city"] == "Springfield"
         assert order["shipping_method"] == "courier"
-        assert Order.objects.get(pk=order["id"]).address_country == ""
 
-    def test_a_sent_address_is_neither_validated_nor_stored(self, filled, installed):
+    def test_without_delivery_the_flag_is_false(self, filled):
+        order = filled.post(CHECKOUT, body(), format="json").json()
+        assert order["address_from_delivery"] is False
+
+    @pytest.mark.parametrize("context", [{"delivery": {"method": "courier"}}, {}])
+    def test_no_address_is_refused_with_a_registered_key(self, filled, installed, context):
         installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
-        resp = filled.post(CHECKOUT, self._body(address={"line1": "", "country": "nowhere"},
-                                                delivery={"method": "pickup"}), format="json")
-        assert resp.status_code == 201, resp.content
-        assert resp.json()["shipping_address"] is None
-
-    def test_without_delivery_the_address_is_required(self, filled):
-        resp = filled.post(CHECKOUT, self._body(), format="json")
+        data = body(**context)
+        data.pop("shipping_address")
+        resp = filled.post(CHECKOUT, data, format="json")
         assert resp.status_code == 400
-        assert "shipping_address" in str(resp.json())
+        assert resp.json()["localizable_error"] == "error.400.shipping_address_required"
+        assert not Order.objects.exists()
+
+    def test_the_address_keeps_orders_shape_rules_with_delivery(self, filled, installed):
+        installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
+        data = body(delivery={"method": "courier"})
+        data["shipping_address"] = {"line1": "1 Main St", "city": "X", "country": "nowhere"}
+        assert filled.post(CHECKOUT, data, format="json").status_code == 400
 
     def test_the_shipping_adjustment_code_names_the_method(self, filled, installed):
         installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
-        data = self._body(delivery={"method": "express"})
+        data = body(delivery={"method": "express"})
         data["shipping_method"] = "typed-by-client"
         order = filled.post(CHECKOUT, data, format="json").json()
         assert order["shipping_method"] == "express"
@@ -808,4 +812,3 @@ class TestDeliveryOwnsTheAddress:
         data["shipping_method"] = "courier"
         order = filled.post(CHECKOUT, data, format="json").json()
         assert order["shipping_method"] == "courier"
-        assert order["shipping_address"]["city"] == "Springfield"

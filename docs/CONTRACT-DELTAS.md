@@ -136,45 +136,19 @@ the machine form.
 
 ## Delivery owns the address (D4, decided 2026-11-12)
 
-28. When the checkout `context` carries a `delivery` key, orders does not
-    require, validate, compare or store its own `shipping_address`; the
-    delivery companion's address is authoritative. `OrderResponse.shipping_address`
-    is then `null` (the field is nullable since 0.2.0). Without `delivery`,
-    `shipping_address` is required as before (400 on absence).
-    `Order.shipping_method` is filled from the `code` of the first adjustment
-    of kind `shipping` (non-personal, ≤ 32 chars); without one, the client's
-    `shipping_method` stays.
-
-## Actor and user (D5, decided 2026-11-12)
-
-29. Every adjuster and checkout-hook payload — quote request, `reserve`,
-    `commit`, `release` — carries `actor_id` (the acting account id, guest or
-    real, always present) next to `user_id`, which is **null for a guest on
-    all of them** (items 3 and 12 now agree: `commit` no longer sends the
-    guest's id; `release` gains both keys). `orders.order.placed` carries
-    `actor_id` as well; its `user_id` stays the stored account id (a
-    guest's included), because nulling it would break released consumers.
-    The new properties are optional in `schemas/functions/*.json` and the
-    placed schema. Those request schemas say `additionalProperties: false`:
-    a companion that validates orders' payloads against an older copy of
-    them must take the new files (and should not ship a copy at all).
-
-## Refund (O1, 2026-11-12)
-
-30. A staff refund (`POST orders/<id>/refund/`, or `transition` to
-    `refunded`) of a paid order moves `status` and `payment_status` to
-    `refunded` — a new value in `orders.order.status_changed` `from`/`to`
-    and in `OrderStatusEnum` — and emits `orders.order.refunded`
-    `{order_id, attempt_key?, user_id | null, total, currency}` once.
-    Checkout hooks get `release` with reason **`cancelled`** exactly once
-    (no new reason value): companions undo a refunded order the way they
-    undo a cancelled one, from any status (a shipped or completed order may
-    be refunded). Full refunds only. A cancelled order cannot be refunded,
-    and a refunded one cannot be cancelled.
-31. Notification type `orders.refunded` (variables as `orders.status_changed`
-    plus `reason`) needs a routing entry, template and translation keys in
-    stapel-notifications (ask, like `orders.placed`); until then the send is
-    best-effort and dropped.
+28. When the checkout `context` carries a `delivery` key, the delivery
+    companion's address is authoritative for fulfilment. `shipping_address`
+    stays required on checkout and non-nullable on `OrderResponse` (v1 is
+    frozen): the client sends the address the shopper gave the companion;
+    orders accepts and stores it as today, validated only by its own shape
+    rules and never compared with the companion's. A missing address is
+    refused with `error.400.shipping_address_required` (field
+    `shipping_address`). The additive boolean
+    `OrderResponse.address_from_delivery` is true when the order was placed
+    with `context.delivery`, so clients show the companion's address as the
+    authoritative one. `Order.shipping_method` is filled from the `code` of
+    the first adjustment of kind `shipping` (non-personal, ≤ 32 chars);
+    without one, the client's `shipping_method` stays.
 
 ## Wiring
 

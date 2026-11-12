@@ -225,9 +225,10 @@ def _refusal_from(error: seams.QuoteError) -> OrdersError:
     return OrdersError(error.http_status(), error.code, {**error.params, "field": error.field})
 
 
-def _create_order(cart, lines, user_id, contact: Contact, address: Address | None,
+def _create_order(cart, lines, user_id, contact: Contact, address: Address,
                   shipping_method: str, comment: str,
-                  quote: seams.Quote | None = None) -> Order:
+                  quote: seams.Quote | None = None,
+                  address_from_delivery: bool = False) -> Order:
     totals = [line.line_total for line in lines]
     subtotal = money.sum_lines(totals)
     adjustments = quote.adjustments if quote is not None else []
@@ -236,8 +237,6 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address | Non
     shipping = next((a for a in adjustments if a.kind == "shipping" and a.code), None)
     if shipping is not None:
         shipping_method = shipping.code[:SHIPPING_METHOD_MAX_LENGTH]
-    if address is None:
-        address = Address(line1="", city="", country="")
     fields = dict(
         user_id=user_id,
         currency=cart.currency,
@@ -255,6 +254,7 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address | Non
         address_postal_code=address.postal_code or "",
         address_country=address.country.upper(),
         shipping_method=shipping_method or "",
+        address_from_delivery=address_from_delivery,
         comment=comment or "",
     )
     for _ in range(_NUMBER_ATTEMPTS):
@@ -303,7 +303,7 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address | Non
     return order
 
 
-def checkout(user, *, idempotency_key, contact: Contact, address: Address | None,
+def checkout(user, *, idempotency_key, contact: Contact, address: Address,
              shipping_method: str = "", comment: str = "",
              context: dict | None = None,
              expected_total=None) -> tuple[Order, bool]:
@@ -378,7 +378,8 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address | None
                     request["adjustments_so_far"] = [a.to_wire() for a in quote.adjustments]
                     hooks.reserve_all(hook_names, request, idempotency_key, reserved, tokens)
                 order = _create_order(cart, lines, user_id, contact, address,
-                                      shipping_method, comment, quote)
+                                      shipping_method, comment, quote,
+                                      address_from_delivery="delivery" in context)
                 CheckoutAttempt.objects.create(
                     user_id=user_id, idempotency_key=idempotency_key, order=order
                 )

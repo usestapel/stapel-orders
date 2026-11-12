@@ -256,6 +256,11 @@ class Order(models.Model):
         max_length=COUNTRY_MAX_LENGTH,
         help_text="Shipping address snapshot: ISO 3166-1 alpha-2 country.",
     )
+    address_from_delivery = models.BooleanField(
+        default=False,
+        help_text="Placed with a delivery key in the checkout context: the delivery "
+                  "companion's address is authoritative; this snapshot is the shopper's copy.",
+    )
     shipping_method = models.CharField(
         max_length=SHIPPING_METHOD_MAX_LENGTH, blank=True, default="",
         help_text="Free shipping method code chosen at checkout.",
