@@ -141,7 +141,7 @@ class OrderPresenter:
                 region=order.address_region,
                 postal_code=order.address_postal_code,
                 country=order.address_country,
-            ),
+            ) if order.address_country else None,
             shipping_method=order.shipping_method,
             comment=order.comment,
             created_at=order.created_at,

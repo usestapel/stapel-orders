@@ -730,3 +730,50 @@ class TestExpectedTotal:
     def test_a_malformed_expected_total_is_400(self, filled):
         resp = filled.post(CHECKOUT, {**body(), "expected_total": "1.234"}, format="json")
         assert resp.status_code == 400
+
+
+class TestDeliveryOwnsTheAddress:
+    """D4: a ``delivery`` key in the context hands the address to the companion."""
+
+    def _body(self, key=None, address=None, **context):
+        data = body(key, **context)
+        if address is None:
+            data.pop("shipping_address")
+        else:
+            data["shipping_address"] = address
+        return data
+
+    def test_no_address_is_needed_with_delivery(self, filled, installed):
+        installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
+        resp = filled.post(CHECKOUT, self._body(delivery={"method": "courier"}), format="json")
+        assert resp.status_code == 201, resp.content
+        order = resp.json()
+        assert order["shipping_address"] is None
+        assert order["shipping_method"] == "courier"
+        assert Order.objects.get(pk=order["id"]).address_country == ""
+
+    def test_a_sent_address_is_neither_validated_nor_stored(self, filled, installed):
+        installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
+        resp = filled.post(CHECKOUT, self._body(address={"line1": "", "country": "nowhere"},
+                                                delivery={"method": "pickup"}), format="json")
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["shipping_address"] is None
+
+    def test_without_delivery_the_address_is_required(self, filled):
+        resp = filled.post(CHECKOUT, self._body(), format="json")
+        assert resp.status_code == 400
+        assert "shipping_address" in str(resp.json())
+
+    def test_the_shipping_adjustment_code_names_the_method(self, filled, installed):
+        installed(FakeAdjuster("ship", flat_shipping("5.00"), order=200))
+        data = self._body(delivery={"method": "express"})
+        data["shipping_method"] = "typed-by-client"
+        order = filled.post(CHECKOUT, data, format="json").json()
+        assert order["shipping_method"] == "express"
+
+    def test_without_a_shipping_adjustment_the_clients_method_stays(self, filled):
+        data = body()
+        data["shipping_method"] = "courier"
+        order = filled.post(CHECKOUT, data, format="json").json()
+        assert order["shipping_method"] == "courier"
+        assert order["shipping_address"]["city"] == "Springfield"

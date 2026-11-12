@@ -134,6 +134,17 @@ the machine form.
     receive as `lines[].attrs`. Order lines do not snapshot attrs, so
     `OrderLine` has none.
 
+## Delivery owns the address (D4, decided 2026-11-12)
+
+28. When the checkout `context` carries a `delivery` key, orders does not
+    require, validate, compare or store its own `shipping_address`; the
+    delivery companion's address is authoritative. `OrderResponse.shipping_address`
+    is then `null` (the field is nullable since 0.2.0). Without `delivery`,
+    `shipping_address` is required as before (400 on absence).
+    `Order.shipping_method` is filled from the `code` of the first adjustment
+    of kind `shipping` (non-personal, ≤ 32 chars); without one, the client's
+    `shipping_method` stays.
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

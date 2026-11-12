@@ -41,6 +41,7 @@ from ..models import (
     Order,
     OrderAdjustment,
     OrderLine,
+    SHIPPING_METHOD_MAX_LENGTH,
     PaymentStatus,
 )
 from . import OrdersError, events, hooks
@@ -223,7 +224,7 @@ def _refusal_from(error: seams.QuoteError) -> OrdersError:
     return OrdersError(error.http_status(), error.code, {**error.params, "field": error.field})
 
 
-def _create_order(cart, lines, user_id, contact: Contact, address: Address,
+def _create_order(cart, lines, user_id, contact: Contact, address: Address | None,
                   shipping_method: str, comment: str,
                   quote: seams.Quote | None = None) -> Order:
     totals = [line.line_total for line in lines]
@@ -231,6 +232,11 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address,
     adjustments = quote.adjustments if quote is not None else []
     total = money.adjusted_total(subtotal, [a.amount for a in adjustments])
     total_base, base = _total_base(total, cart.currency)
+    shipping = next((a for a in adjustments if a.kind == "shipping" and a.code), None)
+    if shipping is not None:
+        shipping_method = shipping.code[:SHIPPING_METHOD_MAX_LENGTH]
+    if address is None:
+        address = Address(line1="", city="", country="")
     fields = dict(
         user_id=user_id,
         currency=cart.currency,
@@ -296,7 +302,7 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address,
     return order
 
 
-def checkout(user, *, idempotency_key, contact: Contact, address: Address,
+def checkout(user, *, idempotency_key, contact: Contact, address: Address | None,
              shipping_method: str = "", comment: str = "",
              context: dict | None = None,
              expected_total=None) -> tuple[Order, bool]:

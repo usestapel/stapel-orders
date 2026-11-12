@@ -62,6 +62,14 @@ additive fields.
   (`schemas/emits/`): what the `PAYMENT` providers registered in orders emit;
   the payment consumer reads it and billing's `payment.completed` alike.
 
+### Changed
+- **The delivery companion owns the address when the checkout `context`
+  carries a `delivery` key**: `shipping_address` is then not required, not
+  validated, not compared and not stored, and `OrderResponse.shipping_address`
+  is `null` (now nullable). Without `delivery` the address stays required.
+  `Order.shipping_method` is taken from the first `shipping` adjustment's
+  `code` when one exists (the client's value otherwise).
+
 ### Fixed
 - **A staggered replay of one attempt key released a live order's
   companions.** A twin that read a hook row as `pending` while the first

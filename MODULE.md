@@ -81,6 +81,12 @@ from the spec:
   by the adjuster that owns the key, never by orders.
 - Response: `{"adjustments": [{"kind": "discount" | "shipping" | "tax" | "fee", "code", "label", "amount" (signed decimal string, cart currency), "line_index" | null, "meta": {}}], "errors": [{"code", "field" | null, "params": {}}]}`.
 
+A `delivery` key in `context` hands the address to the delivery companion:
+checkout then neither requires nor validates `shipping_address` (a sent one
+is ignored, never compared), and the order's `shipping_address` is null; the
+companion's address is authoritative. `Order.shipping_method` is the first
+`shipping` adjustment's `code` when there is one.
+
 Any error refuses the checkout with that code; `POST cart/quote/` returns
 them without failing. Optional `expected_total` on checkout (decimal string, cart
 currency — the total the shopper was shown): when present and the re-quote

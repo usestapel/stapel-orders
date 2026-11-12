@@ -123,7 +123,8 @@ class OrderDTO:
     total: Decimal
     lines: list[OrderLineDTO]
     contact: ContactDTO
-    shipping_address: AddressDTO
+    #: None when the delivery companion owns the address.
+    shipping_address: Optional[AddressDTO]
     shipping_method: str
     comment: str
     created_at: datetime.datetime

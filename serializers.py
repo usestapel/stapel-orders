@@ -155,7 +155,12 @@ class AddressSnapshotSerializer(serializers.Serializer):
 class CheckoutRequestSerializer(serializers.Serializer):
     idempotency_key = serializers.UUIDField()
     contact = ContactSnapshotSerializer()
-    shipping_address = AddressSnapshotSerializer()
+    shipping_address = AddressSnapshotSerializer(
+        required=False,
+        help_text="Required unless context carries a delivery key: then the delivery "
+                  "companion owns the address, and this one is neither required, "
+                  "validated, compared nor stored.",
+    )
     shipping_method = serializers.CharField(
         max_length=m.SHIPPING_METHOD_MAX_LENGTH, required=False, allow_blank=True, default=""
     )
@@ -170,8 +175,26 @@ class CheckoutRequestSerializer(serializers.Serializer):
                   "and the fresh quote. Absent: no comparison.",
     )
 
+    def to_internal_value(self, data):
+        if _delivery_owns_address(data):
+            data = {k: v for k, v in data.items() if k != "shipping_address"}
+        return super().to_internal_value(data)
+
     def validate_context(self, value):
         return _check_context(value)
+
+    def validate(self, attrs):
+        if "shipping_address" not in attrs and "delivery" not in (attrs.get("context") or {}):
+            raise serializers.ValidationError(
+                {"shipping_address": [self.fields["shipping_address"].error_messages["required"]]}
+            )
+        return attrs
+
+
+def _delivery_owns_address(data) -> bool:
+    """A ``delivery`` key in the checkout context hands the address to the companion."""
+    context = data.get("context") if hasattr(data, "get") else None
+    return isinstance(context, dict) and "delivery" in context
 
 
 # ── Orders ────────────────────────────────────────────────────────────────
@@ -201,7 +224,11 @@ class OrderResponseSerializer(serializers.Serializer):
     lines = OrderLineSerializer(many=True)
     adjustments = AdjustmentSerializer(many=True)
     contact = ContactSnapshotSerializer()
-    shipping_address = AddressSnapshotSerializer()
+    shipping_address = AddressSnapshotSerializer(
+        allow_null=True,
+        help_text="Null when the delivery companion owns the address (checkout context "
+                  "carried a delivery key).",
+    )
     shipping_method = serializers.CharField(max_length=m.SHIPPING_METHOD_MAX_LENGTH, allow_blank=True)
     comment = serializers.CharField(max_length=m.COMMENT_MAX_LENGTH, allow_blank=True)
     created_at = serializers.DateTimeField()
