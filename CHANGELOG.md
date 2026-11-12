@@ -79,6 +79,11 @@ additive fields.
   and the sweep later sent orphan releases for pairs never reserved. Rows
   this attempt wrote but sent no reserve for are closed (`released`) without
   a companion call.
+- **A replay twin could get `error.400.cart_empty` instead of its order**
+  when the first submit committed between the twin's replay check and its
+  cart read. A refusal before the cart lock (empty cart, resolver
+  unavailable, a hook row refused) now re-checks the attempt key behind the
+  cart lock first: a twin always gets the order.
 - **`PAYMENT="mock"` next to stapel-billing refused every checkout**
   (`payment.completed violates schema: 'user_id' is a required property`).
   `payment.completed` is billing's fact with billing's shape; the mock

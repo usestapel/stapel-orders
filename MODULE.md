@@ -116,7 +116,8 @@ unanswered commit wins: the commit is not retried and `release` (reason
 `orders.order.placed` carries `attempt_key` (since 0.2.0), so a companion can
 find its checkout intent from the fact.
 
-All three are idempotent on `(attempt_key, name)`; a release followed by a
+A replay of an attempt key always answers the order it placed: any refusal
+before the cart lock re-checks the key behind the lock first. All three are idempotent on `(attempt_key, name)`; a release followed by a
 reserve of the same pair reserves anew (a refused checkout is retried with
 the same key). A hook that is registered but unanswered refuses the
 checkout (fail closed, `error.503.checkout_hook_unavailable`).

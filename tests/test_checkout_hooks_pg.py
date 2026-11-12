@@ -179,3 +179,63 @@ def test_a_staggered_twin_does_not_orphan_the_live_order(user, catalog, settings
     assert len(hook.ops("reserve")) == 1
     assert hook.ops("release") == []
     assert hook.holds[str(key)]["state"] == "committed"
+
+
+def test_every_staggered_twin_gets_the_order_even_after_the_cart_emptied(
+    user, catalog, settings, monkeypatch
+):
+    """Twins whose replay check runs before the first submit commits and whose
+    cart read runs after it: each one gets the order, none ``cart_empty``."""
+    from stapel_orders.payment import PaymentProvider, register_payment_provider
+
+    first_done = threading.Event()
+
+    class SlowPayment(PaymentProvider):
+        def start(self, order, emit):
+            time.sleep(1.0)
+            return None
+
+    register_payment_provider("slow", SlowPayment)
+    settings.STAPEL_ORDERS = {**settings.STAPEL_ORDERS, "PAYMENT": "slow"}
+    real_get_cart = checkout_service.get_cart
+
+    def get_cart_after_the_first_commit(user_id):
+        if threading.current_thread().name.startswith("twin"):
+            first_done.wait(30)
+        return real_get_cart(user_id)
+
+    monkeypatch.setattr(checkout_service, "get_cart", get_cart_after_the_first_commit)
+    catalog.put("a", price="10.00")
+    cart_service.add_line(str(user.pk), "item", "a", 1)
+    hook = FakeHook("stock").install()
+    key = uuid.uuid4()
+    results, failures = [], []
+
+    def submit(delay):
+        try:
+            time.sleep(delay)
+            results.append(checkout_service.checkout(
+                user, idempotency_key=key, contact=_contact(), address=_address(),
+            ))
+        except Exception as exc:  # surfaced below
+            failures.append(exc)
+        finally:
+            if threading.current_thread().name == "first":
+                first_done.set()
+            connection.close()
+
+    threads = [threading.Thread(target=submit, args=(0,), name="first")] + [
+        threading.Thread(target=submit, args=(0.3,), name=f"twin-{i}") for i in range(3)
+    ]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+    finally:
+        hook.uninstall()
+    assert failures == []
+    assert sorted(created for _, created in results) == [False, False, False, True]
+    assert len({order.pk for order, _ in results}) == 1
+    assert Order.objects.count() == 1
+    assert len(hook.ops("reserve")) == 1 and hook.ops("release") == []

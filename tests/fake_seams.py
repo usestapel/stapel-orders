@@ -109,7 +109,7 @@ def flat_shipping(price: str, free_from: str | None = None):
 class FakeHook:
     """An inventory-like hook keeping holds per attempt key; logs every call."""
 
-    def __init__(self, name: str, order: int = 100):
+    def __init__(self, name: str, order: int = 100, silent=None):
         self.name = name
         self.order = order
         self.functions = {op: f"ox_fake.{name}.{op}" for op in seams.HOOK_OPERATIONS}
@@ -117,7 +117,9 @@ class FakeHook:
         #: attempt_key -> {"state": reserved|committed|released, "token": str}
         self.holds: dict[str, dict] = {}
         self.refuse_with: dict | None = None
-        self.silent: set[str] = set()
+        #: Operations that raise (an unanswered call): e.g. {"release"} keeps
+        #: a failed checkout's rows ``releasing`` until the sweep gets an answer.
+        self.silent: set[str] = set(silent or ())
 
     def ops(self, op: str) -> list[dict]:
         return [payload for name, payload in self.calls if name == op]
@@ -162,3 +164,8 @@ class FakeHook:
         for function in self.functions.values():
             _unregister(function)
         seams.register_checkout_hook(self.name, None)
+
+    def missing_release(self):
+        """The hook stays registered but its release Function is gone."""
+        _unregister(self.functions["release"])
+        return self

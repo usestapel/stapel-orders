@@ -35,6 +35,7 @@ from ..errors import (
     ERR_503_PURCHASABLE_UNAVAILABLE,
 )
 from ..models import (
+    Cart,
     CartLine,
     CheckoutAttempt,
     Order,
@@ -100,6 +101,13 @@ def _replayed(user_id: str, idempotency_key) -> Order | None:
         .first()
     )
     return attempt.order if attempt else None
+
+
+def _replayed_under_lock(user_id: str, idempotency_key) -> Order | None:
+    """The replay check behind the cart lock: waits out a twin in flight."""
+    with transaction.atomic():
+        Cart.objects.select_for_update().filter(user_id=user_id).first()
+        return _replayed(user_id, idempotency_key)
 
 
 def _resolve_lines(pairs) -> dict:
@@ -308,16 +316,24 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address,
     if replay is not None:
         return replay, False
 
-    cart = get_cart(user_id)
-    pairs = [] if cart is None else list(
-        cart.lines.values_list("purchasable_type", "purchasable_key")
-    )
-    if not pairs:
-        raise OrdersError(400, ERR_400_CART_EMPTY)
-    resolved = _resolve_lines(pairs)
-
     written: list[str] = []
-    hook_names = hooks.prepare(idempotency_key, user_id, written)
+    try:
+        cart = get_cart(user_id)
+        pairs = [] if cart is None else list(
+            cart.lines.values_list("purchasable_type", "purchasable_key")
+        )
+        if not pairs:
+            raise OrdersError(400, ERR_400_CART_EMPTY)
+        resolved = _resolve_lines(pairs)
+        hook_names = hooks.prepare(idempotency_key, user_id, written)
+    except OrdersError:
+        # Read without the lock: a twin of this key may have committed in
+        # between (and emptied the cart). A twin always gets the order.
+        replay = _replayed_under_lock(user_id, idempotency_key)
+        if replay is not None:
+            hooks.drop_unsent(idempotency_key, written, [])
+            return replay, False
+        raise
     reserved: list[str] = []
     tokens: dict[str, str] = {}
     refusal_key = None

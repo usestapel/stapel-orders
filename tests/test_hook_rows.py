@@ -25,6 +25,7 @@ V1 = "/orders/api/v1"
 LINES = V1 + "/cart/lines/"
 CHECKOUT = V1 + "/checkout/"
 LATER = datetime.timedelta(seconds=901)
+OUT_OF_STOCK = {"code": "error.409.out_of_stock", "field": None, "params": {}}
 
 
 @pytest.fixture(autouse=True)
@@ -230,3 +231,86 @@ def test_the_same_key_reserves_after_a_refusal_before_reserve(
     assert placed.status_code == 201, placed.content
     assert len(stock.ops("reserve")) == 1 and stock.ops("release") == []
     assert CheckoutHookState.objects.get().state == HookState.COMMITTED
+
+
+# -- a twin that reads the cart after the first submit committed (D8) --------
+
+def test_a_twin_that_reads_an_emptied_cart_gets_the_order(
+    auth_client, catalog, stock, monkeypatch, django_capture_on_commit_callbacks
+):
+    """The twin's replay check ran before the first submit committed, its cart
+    read after: refusing ``cart_empty`` there would lose the order it placed."""
+    from stapel_orders.services import checkout as checkout_service
+
+    _fill(auth_client, catalog)
+    key = uuid.uuid4()
+    with django_capture_on_commit_callbacks(execute=True):
+        first = auth_client.post(CHECKOUT, _body(key), format="json")
+    assert first.status_code == 201
+    real_replayed = checkout_service._replayed
+    calls = {"n": 0}
+
+    def stale_first(user_id, attempt_key):
+        calls["n"] += 1
+        return None if calls["n"] == 1 else real_replayed(user_id, attempt_key)
+
+    monkeypatch.setattr(checkout_service, "_replayed", stale_first)
+    twin = auth_client.post(CHECKOUT, _body(key), format="json")
+    assert twin.status_code == 200, twin.content
+    assert twin.json()["id"] == first.json()["id"]
+    assert Order.objects.count() == 1
+    assert len(stock.ops("reserve")) == 1 and stock.ops("release") == []
+
+
+def test_an_empty_cart_without_a_twin_is_still_refused(auth_client, stock):
+    resp = auth_client.post(CHECKOUT, _body(uuid.uuid4()), format="json")
+    assert resp.status_code == 400
+    assert resp.json()["localizable_error"] == "error.400.cart_empty"
+    assert not CheckoutHookState.objects.filter(state=HookState.PENDING).exists()
+
+
+# -- the releasing path (an unanswered release after a failed checkout) -------
+
+def test_an_unanswered_release_stays_releasing_and_blocks_a_retry_until_answered(
+    auth_client, catalog, monkeypatch, django_capture_on_commit_callbacks
+):
+    """Harness lever: ``FakeHook(..., silent={"release"})`` (or
+    ``missing_release()``) leaves the companion's release unanswered."""
+    hook = FakeHook("stock", silent={"release"}).install()
+    try:
+        _fill(auth_client, catalog)
+        key = uuid.uuid4()
+        hook.refuse_with = OUT_OF_STOCK
+        refused = auth_client.post(CHECKOUT, _body(key), format="json")
+        assert refused.status_code == 409
+        row = CheckoutHookState.objects.get()
+        assert (row.state, row.release_reason) == (HookState.RELEASING, "checkout_failed")
+
+        retry = auth_client.post(CHECKOUT, _body(key), format="json")
+        assert retry.status_code == 503
+        assert retry.json()["localizable_error"] == "error.503.checkout_hook_unavailable"
+        assert len(hook.ops("reserve")) == 1
+
+        hook.silent = set()
+        assert hook_service.sweep()["released"] == 1
+        assert CheckoutHookState.objects.get().state == HookState.RELEASED
+        hook.refuse_with = None
+        with django_capture_on_commit_callbacks(execute=True):
+            placed = auth_client.post(CHECKOUT, _body(key), format="json")
+        assert placed.status_code == 201, placed.content
+        assert [p["reason"] for p in hook.ops("release")] == ["checkout_failed"] * 3
+        assert CheckoutHookState.objects.get().state == HookState.COMMITTED
+    finally:
+        hook.uninstall()
+
+
+def test_a_missing_release_function_is_unanswered_too(auth_client, catalog):
+    hook = FakeHook("stock").install().missing_release()
+    try:
+        _fill(auth_client, catalog)
+        hook.refuse_with = OUT_OF_STOCK
+        assert auth_client.post(CHECKOUT, _body(uuid.uuid4()), format="json").status_code == 409
+        assert CheckoutHookState.objects.get().state == HookState.RELEASING
+        assert hook_service.sweep()["unanswered"] == 1
+    finally:
+        hook.uninstall()
