@@ -20,6 +20,8 @@ ERR_409_ORDER_TRANSITION_INVALID = "error.409.order_transition_invalid"
 ERR_409_CHECKOUT_HOOK_REFUSED = "error.409.checkout_hook_refused"
 ERR_409_TOTAL_CHANGED = "error.409.total_changed"
 ERR_409_CHECKOUT_ATTEMPT_CONFLICT = "error.409.checkout_attempt_conflict"
+ERR_409_ORDER_NOT_REFUNDABLE = "error.409.order_not_refundable"
+ERR_409_REFUND_UNSUPPORTED = "error.409.refund_unsupported"
 ERR_503_PURCHASABLE_UNAVAILABLE = "error.503.purchasable_unavailable"
 ERR_503_ADJUSTER_UNAVAILABLE = "error.503.adjuster_unavailable"
 ERR_503_CHECKOUT_HOOK_UNAVAILABLE = "error.503.checkout_hook_unavailable"
@@ -40,6 +42,8 @@ STAPEL_ORDERS_ERRORS = {
     ERR_409_TOTAL_CHANGED: "The order total is now {total}; review it and submit again",
     ERR_409_CHECKOUT_HOOK_REFUSED: "The order cannot be placed right now; review the cart and submit again",
     ERR_409_CHECKOUT_ATTEMPT_CONFLICT: "This checkout key is already in use; start checkout again",
+    ERR_409_ORDER_NOT_REFUNDABLE: "Only a paid order can be refunded; this one is {payment_status}",
+    ERR_409_REFUND_UNSUPPORTED: "The payment provider {provider} cannot refund; refund the payment there and record it by hand",
     ERR_503_PURCHASABLE_UNAVAILABLE: "Item details are temporarily unavailable; try again shortly",
     ERR_503_ADJUSTER_UNAVAILABLE: "Prices for this order cannot be calculated right now; try again shortly",
     ERR_503_CHECKOUT_HOOK_UNAVAILABLE: "The order cannot be placed right now; try again shortly",
@@ -74,6 +78,8 @@ __all__ = [
     "ERR_409_CHECKOUT_HOOK_REFUSED",
     "ERR_409_TOTAL_CHANGED",
     "ERR_409_CHECKOUT_ATTEMPT_CONFLICT",
+    "ERR_409_ORDER_NOT_REFUNDABLE",
+    "ERR_409_REFUND_UNSUPPORTED",
     "ERR_503_PURCHASABLE_UNAVAILABLE",
     "ERR_503_ADJUSTER_UNAVAILABLE",
     "ERR_503_CHECKOUT_HOOK_UNAVAILABLE",

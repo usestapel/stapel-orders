@@ -159,6 +159,23 @@ the machine form.
     a companion that validates orders' payloads against an older copy of
     them must take the new files (and should not ship a copy at all).
 
+## Refund (O1, 2026-11-12)
+
+30. A staff refund (`POST orders/<id>/refund/`, or `transition` to
+    `refunded`) of a paid order moves `status` and `payment_status` to
+    `refunded` — a new value in `orders.order.status_changed` `from`/`to`
+    and in `OrderStatusEnum` — and emits `orders.order.refunded`
+    `{order_id, attempt_key?, user_id | null, total, currency}` once.
+    Checkout hooks get `release` with reason **`cancelled`** exactly once
+    (no new reason value): companions undo a refunded order the way they
+    undo a cancelled one, from any status (a shipped or completed order may
+    be refunded). Full refunds only. A cancelled order cannot be refunded,
+    and a refunded one cannot be cancelled.
+31. Notification type `orders.refunded` (variables as `orders.status_changed`
+    plus `reason`) needs a routing entry, template and translation keys in
+    stapel-notifications (ask, like `orders.placed`); until then the send is
+    best-effort and dropped.
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

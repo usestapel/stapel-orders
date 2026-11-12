@@ -73,6 +73,8 @@ class OrderStatus(models.TextChoices):
     COMPLETED = "completed", "Completed"
     CANCELLED = "cancelled", "Cancelled"
     NEEDS_REVIEW = "needs_review", "Needs review"
+    #: Staff refunded a paid order in full (payment_status refunded too).
+    REFUNDED = "refunded", "Refunded"
 
 
 class AdjustmentKind(models.TextChoices):

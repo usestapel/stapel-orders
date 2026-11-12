@@ -10,9 +10,11 @@
   purchasables `(purchasable_type, purchasable_key)`; one currency per cart.
 - **Checkout** turning the cart into an **Order** (`Order`, `OrderLine`),
   idempotent on a client key (`CheckoutAttempt`).
-- An order lifecycle FSM (`fsm.py`) with buyer cancel and staff transitions.
+- An order lifecycle FSM (`fsm.py`) with buyer cancel, staff transitions
+  and a staff **refund** of a paid order (in full).
 - API under `/orders/api/v1/` (`cart/`, `cart/lines/`, `cart/quote/`,
-  `checkout/`, `orders/`), facts `orders.order.*`, Functions `orders.*`.
+  `checkout/`, `orders/`, `orders/<id>/refund/`), facts `orders.order.*`,
+  Functions `orders.*`.
 - **Checkout seams** for commerce companions: `ADJUSTERS` (price
   adjustments snapshotted as `OrderAdjustment`) and `CHECKOUT_HOOKS`
   (reserve / commit / release, state in `CheckoutHookState`).
@@ -34,7 +36,7 @@
 | `CHECKOUT_HOOK_ORPHAN_SECONDS` | `900` | Age after which the hook sweep releases an unfinished checkout's reservations. |
 | `PAYMENT` | `"none"` | Axis. Short name (`none`, `mock`, registered) or dotted path; env may set short names only. |
 | `OWNER_CANCELLABLE_STATUSES` | `("new",)` | Where the buyer may cancel. |
-| `NOTIFY` | `True` | Best-effort `orders.placed` / `orders.status_changed` notifications. |
+| `NOTIFY` | `True` | Best-effort `orders.placed` / `orders.status_changed` / `orders.refunded` notifications. |
 | `ORDER_URL_TEMPLATE` | `""` | `{order_id}`/`{number}` link in notifications; empty = no link. |
 
 ### The purchasable seam (`registry.py`)
@@ -149,7 +151,9 @@ by `tests/test_checkout_hooks_pg.py` (`STAPEL_ORDERS_TEST_PG`).
 ### Payment providers (`payment.py`)
 
 `register_payment_provider(name, factory)`; a provider's
-`start(order, emit)` runs inside the checkout transaction. Whatever it does,
+`start(order, emit)` runs inside the checkout transaction and
+`refund(order, emit)` inside the refund transaction (default: refuses with
+`RefundUnsupported`). Whatever it does,
 `paid` is set only by the payment consumer (`actions.py`), which reads two
 facts with one handler:
 
@@ -164,6 +168,24 @@ facts with one handler:
   (billing ask B1). Orders never emits it. A host provider that emits
   `payment.completed` for an order is deprecated since 0.2.0: next to
   billing that name is validated against billing's schema and refused.
+
+### Refund (`services.orders.refund_order`, `POST orders/<id>/refund/`)
+
+Staff only. A paid order (`payment_status == paid`) in any status but
+`cancelled` is refunded **in full**; partial refunds are out of scope in
+this version. The `PAYMENT` provider's `refund(order, emit)` runs first in
+the refund transaction (`none` and `mock` succeed trivially; a provider that
+does not override it refuses with `error.409.refund_unsupported`, nothing
+changes). Then `payment_status` and `status` become `refunded`,
+`orders.order.status_changed` (`to: refunded`) and `orders.order.refunded`
+are emitted, the buyer gets the `orders.refunded` notification, and every
+checkout hook gets `release` with reason `cancelled` once — the same path as
+a cancel, so companions return stock, a code use, a shipment. A second
+refund answers the refunded order and does nothing; a cancelled order is
+`error.409.order_transition_invalid` (its reservations are already
+released: refund its money out of band); an unpaid one is
+`error.409.order_not_refundable`. `POST transition/ {"to": "refunded"}` takes
+the same path. Cancelling a paid order does not move money: refund it.
 
 ### Serializer seams and presenters (`views.py`, `presenters.py`)
 
@@ -182,6 +204,7 @@ Views inherit `StapelAPIView`; set `request_serializer_class` /
 | `OrderListView` (GET) | — | `OrderPage` envelope of `OrderResponseSerializer` |
 | `OrderDetailView` / `OrderCancelView` | — | `OrderResponseSerializer` |
 | `OrderTransitionView` (staff) | `OrderTransitionRequestSerializer` | `OrderResponseSerializer` |
+| `OrderRefundView` (staff) | `OrderRefundRequestSerializer` | `OrderResponseSerializer` |
 
 Guest stance: every view declares `stapel_anonymous_access`. Cart, checkout
 and owner order views are `ANONYMOUS_ALLOWED` (rows scoped to
@@ -196,6 +219,7 @@ the declaration is static, the policy is a setting); the staff transition is
 | Action (emits) | `orders.order.placed` | `{order_id, user_id, actor_id, currency, total, placed_at, attempt_key, lines[]}` | `schemas/emits/` |
 | Action (emits) | `orders.order.status_changed` | `{order_id, user_id, from, to, actor, reason?}` | `schemas/emits/` |
 | Action (emits) | `orders.order.paid` | `{order_id, provider_ref}` | `schemas/emits/` |
+| Action (emits) | `orders.order.refunded` | `{order_id, attempt_key?, user_id \| null, total, currency}` | `schemas/emits/` |
 | Action (emits) | `orders.payment.completed` | `{reference_type: "order", reference_key, amount, currency, provider_ref, user_id \| null, simulated}` | `schemas/emits/` |
 | Action (consumes) | `user.merged` | `{from_user_id, into_user_id}` | `schemas/consumes/` |
 | Action (consumes) | `orders.payment.completed` | own fact (above) | `schemas/emits/` |

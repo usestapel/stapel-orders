@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.order.refunded",
+  "description": "Staff refunded a paid order in full through the PAYMENT provider (partial refunds are not built). The order's status and payment_status are now refunded, and the checkout hooks get release with reason cancelled, as on cancel: a companion returns stock, gives a code use back, cancels a shipment. Emitted once per order. user_id is null for a guest account. attempt_key is the checkout idempotency key of the order (absent for an order placed before 0.2.0). Money is a decimal string. Key = order id. Since 0.2.0.",
+  "type": "object",
+  "properties": {
+    "order_id": {"type": "string"},
+    "attempt_key": {"type": "string", "format": "uuid"},
+    "user_id": {"type": ["string", "null"]},
+    "total": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{2}$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"}
+  },
+  "required": ["order_id", "user_id", "total", "currency"],
+  "additionalProperties": false
+}

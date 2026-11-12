@@ -10,7 +10,7 @@
 [![license](https://img.shields.io/github/license/usestapel/stapel-orders)](https://github.com/usestapel/stapel-orders/blob/main/LICENSE)
 [![llms.txt](https://img.shields.io/badge/llms.txt-blue)](https://github.com/usestapel/stapel-orders/blob/main/docs/llms.txt)
 
-> Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
+> Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel and a full staff refund; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
 Part of the [Stapel framework](https://github.com/usestapel) — composable Django apps that deploy as a monolith or as microservices without changing module code.
 
@@ -26,11 +26,11 @@ pip install stapel-orders
 |---|---|
 | Version | `0.1.0` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
-| HTTP operations | 11 |
+| HTTP operations | 12 |
 | Config axes | 2 |
 | Usage surface | 24 |
 | Extension points | 9 |
-| Error codes | 60 |
+| Error codes | 62 |
 | Documented flows | 4 |
 | Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-currencies`](https://github.com/usestapel/stapel-currencies) (optional) · [`stapel-delivery`](https://github.com/usestapel/stapel-delivery) (optional) · [`stapel-inventory`](https://github.com/usestapel/stapel-inventory) (optional) · [`stapel-listings`](https://github.com/usestapel/stapel-listings) (optional) · [`stapel-promotions`](https://github.com/usestapel/stapel-promotions) (optional) |
 

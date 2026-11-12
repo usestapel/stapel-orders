@@ -17,6 +17,8 @@ def test_table_covers_the_spec_edges():
         ("new", "cancelled"), ("confirmed", "cancelled"),
         ("needs_review", "confirmed"), ("needs_review", "cancelled"),
     }
+    expected |= {(s, "refunded") for s in
+                 ("new", "confirmed", "shipped", "completed", "needs_review")}
     expected |= {(s, "needs_review") for s in STATUSES if s != "needs_review"}
     assert set(fsm.TRANSITIONS) == expected
 
@@ -53,8 +55,10 @@ def test_every_edge_staff_may_not_take_is_409(frm, to, client_for, staff, user):
     edge for edge, actors in fsm.TRANSITIONS.items() if fsm.STAFF in actors
 ])
 def test_every_edge_staff_may_take_is_200(frm, to, client_for, staff, user):
-    """Inversion of the above: the 409s are not a blanket refusal."""
-    order = make_order(user, status=frm)
+    """Inversion of the above: the 409s are not a blanket refusal (a refund
+    needs a paid order; services.orders.refund_order)."""
+    paid = {"payment_status": "paid"} if to == "refunded" else {}
+    order = make_order(user, status=frm, **paid)
     resp = client_for(staff).post(
         f"/orders/api/v1/orders/{order.pk}/transition/", {"to": to}, format="json"
     )

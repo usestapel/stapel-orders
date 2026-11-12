@@ -248,6 +248,10 @@ class OrderPageSerializer(serializers.Serializer):
     count = serializers.IntegerField()
 
 
+class OrderRefundRequestSerializer(serializers.Serializer):
+    reason = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")
+
+
 class OrderTransitionRequestSerializer(serializers.Serializer):
     to = serializers.ChoiceField(choices=m.OrderStatus.choices)
     reason = serializers.CharField(max_length=200, required=False, allow_blank=True, default="")

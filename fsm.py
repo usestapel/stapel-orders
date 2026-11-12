@@ -5,7 +5,7 @@ Anything not in the table is ``error.409.order_transition_invalid``. The
 owner's cancel is further narrowed by ``OWNER_CANCELLABLE_STATUSES``.
 
 ``payment_status`` is a second, independent axis (``PAYMENT_TRANSITIONS``),
-moved only by the payment consumer.
+moved only by the payment consumer and the refund.
 """
 from __future__ import annotations
 
@@ -26,6 +26,11 @@ TRANSITIONS: dict[tuple[str, str], frozenset[str]] = {
     (S.NEEDS_REVIEW, S.CONFIRMED): frozenset({STAFF}),
     (S.NEEDS_REVIEW, S.CANCELLED): frozenset({STAFF}),
 }
+# A paid order is refunded by staff (services.orders.refund_order), in full,
+# from any status but cancelled: a cancelled order's reservations are
+# already released, so its money is refunded out of band.
+for _status in (S.NEW, S.CONFIRMED, S.SHIPPED, S.COMPLETED, S.NEEDS_REVIEW):
+    TRANSITIONS[(_status, S.REFUNDED)] = frozenset({STAFF})
 # Any status may be flagged for review by the system (a payment mismatch).
 for _status in S.values:
     if _status != S.NEEDS_REVIEW:

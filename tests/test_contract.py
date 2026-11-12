@@ -33,6 +33,8 @@ STABLE_COMPONENTS = {
     "OrderStatusEnum", "PaymentStatusEnum",
     # 0.2.0 checkout seams (additive).
     "Adjustment", "AdjustmentKindEnum", "QuoteError", "CartQuoteRequest", "CartQuoteResponse",
+    # 0.2.0 refund (additive).
+    "OrderRefundRequest",
 }
 
 

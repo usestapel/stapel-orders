@@ -28,6 +28,7 @@ from .serializers import (
     CartResponseSerializer,
     CheckoutRequestSerializer,
     OrderPageSerializer,
+    OrderRefundRequestSerializer,
     OrderResponseSerializer,
     OrderTransitionRequestSerializer,
 )
@@ -311,3 +312,29 @@ class OrderTransitionView(_OrdersView):
         data = self.validated_request_data(request)
         order = order_service.staff_transition(order_id, data["to"], data.get("reason", ""))
         return self._order_response(order)
+
+
+@extend_schema(tags=TAGS)
+class OrderRefundView(_OrdersView):
+    """Staff refund a paid order in full (partial refunds are not built).
+
+    The PAYMENT provider refunds first; then status and payment_status become
+    ``refunded``, the checkout hooks release (reason ``cancelled``) and
+    ``orders.order.refunded`` is emitted. Idempotent: a refunded order is
+    answered as it is. A cancelled order is not refundable here.
+    """
+
+    permission_classes = [IsStaffUser]
+    stapel_anonymous_access = ANONYMOUS_DENIED
+    request_serializer_class = OrderRefundRequestSerializer
+    response_serializer_class = OrderResponseSerializer
+
+    @extend_schema(
+        operation_id="orders_orders_refund",
+        request=OrderRefundRequestSerializer,
+        responses={200: OrderResponseSerializer},
+    )
+    @flow_step(STAFF_FULFILMENT, order=2, note="Refund a paid order in full")
+    def post(self, request, order_id):
+        data = self.validated_request_data(request)
+        return self._order_response(order_service.refund_order(order_id, data.get("reason", "")))

@@ -167,6 +167,13 @@ def r_order_transition(env):
                        {"to": "confirmed"}, format="json")], []
 
 
+def r_order_refund(env):
+    order = make_order(env.user, payment_status="paid")
+    staff = env.client_for(env.staff)
+    return [staff.post(_url(V1 + "/orders/{order_id}/refund/", order_id=order.pk),
+                       {"reason": "returned"}, format="json")], []
+
+
 RECIPES = {
     ("GET", V1 + "/cart/", 200): r_cart_get,
     ("DELETE", V1 + "/cart/", 200): r_cart_delete,
@@ -180,6 +187,7 @@ RECIPES = {
     ("GET", V1 + "/orders/{order_id}/", 200): r_order_get,
     ("POST", V1 + "/orders/{order_id}/cancel/", 200): r_order_cancel,
     ("POST", V1 + "/orders/{order_id}/transition/", 200): r_order_transition,
+    ("POST", V1 + "/orders/{order_id}/refund/", 200): r_order_refund,
 }
 
 

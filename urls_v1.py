@@ -12,6 +12,7 @@ from .views import (
     OrderCancelView,
     OrderDetailView,
     OrderListView,
+    OrderRefundView,
     OrderTransitionView,
 )
 
@@ -29,6 +30,7 @@ urlpatterns = [
         OrderTransitionView.as_view(),
         name="orders-transition",
     ),
+    path("orders/<int:order_id>/refund/", OrderRefundView.as_view(), name="orders-refund"),
 ]
 
 

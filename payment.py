@@ -31,12 +31,21 @@ from typing import Callable
 from django.core.exceptions import ImproperlyConfigured
 
 
+class RefundUnsupported(Exception):
+    """The provider cannot refund; staff refund at the provider by hand."""
+
+
 class PaymentProvider:
     """Interface: ``start(order, emit)`` runs inside the checkout transaction.
 
     ``emit`` is the ``mutate_and_emit`` emitter of that transaction. Return
     the payment status the order should carry after checkout (``None`` keeps
     ``unpaid``).
+
+    ``refund(order, emit)`` runs inside the refund transaction for a paid
+    order, in full (partial refunds are out of scope). Raise to refuse: the
+    refund then changes nothing. It must be idempotent on the order id. The
+    default refuses with :class:`RefundUnsupported`.
     """
 
     name = ""
@@ -44,11 +53,20 @@ class PaymentProvider:
     def start(self, order, emit) -> str | None:  # pragma: no cover - interface
         raise NotImplementedError
 
+    def refund(self, order, emit) -> None:
+        raise RefundUnsupported(
+            f"payment provider {self.name or type(self).__name__!r} does not implement refund()"
+        )
+
 
 class NoPayment(PaymentProvider):
     name = "none"
 
     def start(self, order, emit) -> str | None:
+        return None
+
+    def refund(self, order, emit) -> None:
+        """Nothing was taken here: staff record a refund they made by hand."""
         return None
 
 
@@ -86,6 +104,10 @@ class MockPayment(PaymentProvider):
             ),
             key=str(order.pk),
         )
+        return None
+
+    def refund(self, order, emit) -> None:
+        """No money moved, so none goes back."""
         return None
 
 

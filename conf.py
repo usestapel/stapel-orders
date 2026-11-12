@@ -58,7 +58,8 @@ DEFAULTS = {
     "PAYMENT": "none",
     # Statuses from which the buyer may cancel their own order.
     "OWNER_CANCELLABLE_STATUSES": ("new",),
-    # Best-effort buyer notifications (orders.placed, orders.status_changed).
+    # Best-effort buyer notifications (orders.placed, orders.status_changed,
+    # orders.refunded).
     "NOTIFY": True,
     # "{order_id}"/"{number}" template for notification links; empty = no link.
     "ORDER_URL_TEMPLATE": "",

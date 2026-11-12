@@ -68,7 +68,7 @@ def _checkout(client, catalog, key):
 
 def _walk_every_emit_path(client_for, user, guest, staff, catalog, settings):
     """The real paths that emit: checkout + mock payment (account and guest),
-    staff moves, a payment mismatch, a buyer cancel."""
+    staff moves, a staff refund, a payment mismatch, a buyer cancel."""
     from stapel_core.comm import emit, mutate_and_emit
 
     settings.STAPEL_ORDERS = {
@@ -82,6 +82,9 @@ def _walk_every_emit_path(client_for, user, guest, staff, catalog, settings):
             f"/orders/api/v1/orders/{paid['id']}/transition/", {"to": to}, format="json"
         )
         assert resp.status_code == 200, resp.content
+    refund = staff_client.post(f"/orders/api/v1/orders/{guest_paid['id']}/refund/", {},
+                               format="json")
+    assert refund.status_code == 200, refund.content
 
     settings.STAPEL_ORDERS = {**settings.STAPEL_ORDERS, "PAYMENT": "none"}
     short = _checkout(buyer, catalog, "b")
@@ -127,7 +130,9 @@ def test_the_mock_payment_fact_is_simulated_and_null_for_a_guest(
     assert facts[str(paid["id"])]["user_id"] == str(user.pk)
     assert facts[str(paid["id"])]["simulated"] is True
     assert facts[str(guest_paid["id"])]["user_id"] is None
-    assert Order.objects.get(pk=guest_paid["id"]).payment_status == "paid"
+    assert Order.objects.get(pk=guest_paid["id"]).payment_status == "refunded"
+    refunded = [p for n, p in emitted if n == "orders.order.refunded"]
+    assert [p["user_id"] for p in refunded] == [None]
 
 
 @pytest.mark.parametrize("path", sorted(CONSUMES.glob("*.json")), ids=lambda p: p.stem)

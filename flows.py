@@ -50,11 +50,15 @@ STAFF_FULFILMENT = Flow(
     "orders.fulfilment",
     title="Fulfil an order",
     description=(
-        "Staff confirm, ship, complete or cancel orders; a payment that does "
-        "not match the order sends it to review."
+        "Staff confirm, ship, complete or cancel orders, and refund a paid "
+        "order in full; a payment that does not match the order sends it to "
+        "review."
     ),
     actors=["Staff"],
 )
 STAFF_FULFILMENT.action(
     "orders.order.status_changed", order=2, note="Every status move is announced"
+)
+STAFF_FULFILMENT.action(
+    "orders.order.refunded", order=3, note="A refund is announced once"
 )

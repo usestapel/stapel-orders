@@ -87,7 +87,7 @@
     "id": "orders.fulfilment",
     "title": "Fulfil an order",
     "title_key": "flow.orders.fulfilment.title",
-    "description": "Staff confirm, ship, complete or cancel orders; a payment that does not match the order sends it to review.",
+    "description": "Staff confirm, ship, complete or cancel orders, and refund a paid order in full; a payment that does not match the order sends it to review.",
     "description_key": "flow.orders.fulfilment.description",
     "actors": [
       "Staff"
@@ -112,6 +112,26 @@
         "note": "Every status move is announced",
         "note_key": "flow.orders.fulfilment.step.2.note",
         "ref": "orders.order.status_changed"
+      },
+      {
+        "kind": "http",
+        "order": 2,
+        "note": "Refund a paid order in full",
+        "note_key": "flow.orders.fulfilment.step.2.note",
+        "ref": "stapel_orders.views.OrderRefundView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/orders/<int:order_id>/refund/"
+          }
+        ]
+      },
+      {
+        "kind": "action",
+        "order": 3,
+        "note": "A refund is announced once",
+        "note_key": "flow.orders.fulfilment.step.3.note",
+        "ref": "orders.order.refunded"
       }
     ]
   },

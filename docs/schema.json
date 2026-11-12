@@ -338,6 +338,7 @@
                   "confirmed",
                   "needs_review",
                   "new",
+                  "refunded",
                   "shipped"
                 ]
               }
@@ -420,6 +421,61 @@
         "tags": [
           "Orders"
         ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/refund/": {
+      "post": {
+        "operationId": "orders_orders_refund",
+        "description": "Staff refund a paid order in full (partial refunds are not built).\n\nThe PAYMENT provider refunds first; then status and payment_status become\n``refunded``, the checkout hooks release (reason ``cancelled``) and\n``orders.order.refunded`` is emitted. Idempotent: a refunded order is\nanswered as it is. A cancelled order is not refundable here.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            }
+          }
+        },
         "security": [
           {
             "JWTCookieAuth": []
@@ -960,6 +1016,16 @@
           "prev_anchor"
         ]
       },
+      "OrderRefundRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          }
+        }
+      },
       "OrderResponse": {
         "type": "object",
         "properties": {
@@ -1060,10 +1126,11 @@
           "shipped",
           "completed",
           "cancelled",
-          "needs_review"
+          "needs_review",
+          "refunded"
         ],
         "type": "string",
-        "description": "* `new` - New\n* `confirmed` - Confirmed\n* `shipped` - Shipped\n* `completed` - Completed\n* `cancelled` - Cancelled\n* `needs_review` - Needs review"
+        "description": "* `new` - New\n* `confirmed` - Confirmed\n* `shipped` - Shipped\n* `completed` - Completed\n* `cancelled` - Cancelled\n* `needs_review` - Needs review\n* `refunded` - Refunded"
       },
       "OrderTransitionRequest": {
         "type": "object",

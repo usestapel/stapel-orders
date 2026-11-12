@@ -57,6 +57,16 @@ additive fields.
   `tests/test_checkout_hooks_pg.py`).
 - `docs/CONTRACT-DELTAS.md`: where the brick-wave spec was silent, the
   reading built here.
+- **Refund**: `POST orders/<id>/refund/` (staff, `OrderRefundRequest
+  {reason?}`) and `services.orders.refund_order` refund a paid order in full
+  (partial refunds are not built). New order status `refunded` (migration
+  `0003_order_refunded`), `payment_status` → `refunded`, fact
+  **`orders.order.refunded`** `{order_id, attempt_key?, user_id | null,
+  total, currency}`, notification `orders.refunded`, checkout hooks released
+  with reason `cancelled` once. `PaymentProvider.refund(order, emit)` (`none`
+  and `mock` succeed; the default refuses → `error.409.refund_unsupported`);
+  `error.409.order_not_refundable` for an unpaid order. Idempotent; a
+  cancelled order is not refundable.
 - Fact **`orders.payment.completed`** `{reference_type: "order",
   reference_key, amount, currency, provider_ref, user_id | null, simulated}`
   (`schemas/emits/`): what the `PAYMENT` providers registered in orders emit;

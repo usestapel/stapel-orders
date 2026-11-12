@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 EVENT_PLACED = "orders.order.placed"
 EVENT_STATUS_CHANGED = "orders.order.status_changed"
 EVENT_PAID = "orders.order.paid"
+EVENT_REFUNDED = "orders.order.refunded"
 #: A payment for an order completed — emitted by the PAYMENT providers
 #: registered here. ``payment.completed`` (stapel-billing's) is only read.
 EVENT_PAYMENT_COMPLETED = "orders.payment.completed"
@@ -27,6 +28,7 @@ SIGNAL_CART_CHANGED = "orders.cart.changed"
 
 NOTIFY_PLACED = "orders.placed"
 NOTIFY_STATUS_CHANGED = "orders.status_changed"
+NOTIFY_REFUNDED = "orders.refunded"
 
 
 def placed_payload(order, lines, attempt_key=None) -> dict:
@@ -75,6 +77,24 @@ def fact_user_id(user_id) -> str | None:
     if user is not None and seams.is_guest(user):
         return None
     return str(user_id)
+
+
+def refunded_payload(order) -> dict:
+    from ..models import CheckoutAttempt
+
+    payload = {
+        "order_id": str(order.pk),
+        "user_id": fact_user_id(order.user_id),
+        "total": to_wire(order.total),
+        "currency": order.currency,
+    }
+    key = (
+        CheckoutAttempt.objects.filter(order_id=order.pk)
+        .values_list("idempotency_key", flat=True).first()
+    )
+    if key is not None:
+        payload["attempt_key"] = str(uuid.UUID(str(key)))
+    return payload
 
 
 def status_changed_payload(order, from_status: str, actor: str, reason: str = "") -> dict:

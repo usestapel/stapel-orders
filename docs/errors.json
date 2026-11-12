@@ -382,6 +382,16 @@
     "owner": "stapel_core"
   },
   {
+    "code": "error.409.order_not_refundable",
+    "status": 409,
+    "params": [
+      "payment_status"
+    ],
+    "remediation": "fix_input",
+    "en": "Only a paid order can be refunded; this one is {payment_status}",
+    "owner": "stapel_orders"
+  },
+  {
     "code": "error.409.order_transition_invalid",
     "status": 409,
     "params": [
@@ -398,6 +408,16 @@
     "params": [],
     "remediation": "fix_input",
     "en": "This item is no longer available in the requested quantity",
+    "owner": "stapel_orders"
+  },
+  {
+    "code": "error.409.refund_unsupported",
+    "status": 409,
+    "params": [
+      "provider"
+    ],
+    "remediation": "fix_input",
+    "en": "The payment provider {provider} cannot refund; refund the payment there and record it by hand",
     "owner": "stapel_orders"
   },
   {

@@ -3,8 +3,8 @@
 Owner reads are scoped by ``user_id``: a foreign id and an absent id answer
 the same 404. Every status move goes through :func:`transition`, which
 checks the table in ``fsm.py`` and emits ``orders.order.status_changed`` in
-the same transaction. A cancel releases the order's checkout-hook
-reservations once it commits.
+the same transaction. A cancel or a refund releases the order's
+checkout-hook reservations (reason ``cancelled``) once it commits.
 """
 from __future__ import annotations
 
@@ -15,7 +15,12 @@ from django.db.models import QuerySet
 from stapel_core.comm import mutate_and_emit
 
 from .. import fsm
-from ..errors import ERR_404_ORDER_NOT_FOUND, ERR_409_ORDER_TRANSITION_INVALID
+from ..errors import (
+    ERR_404_ORDER_NOT_FOUND,
+    ERR_409_ORDER_NOT_REFUNDABLE,
+    ERR_409_ORDER_TRANSITION_INVALID,
+    ERR_409_REFUND_UNSUPPORTED,
+)
 from ..models import Order, OrderStatus, PaymentStatus
 from . import OrdersError, events, hooks
 
@@ -50,14 +55,21 @@ def _invalid(order: Order, to_status: str) -> OrdersError:
     )
 
 
-def transition(order_id, to_status: str, *, actor: str, reason: str = "", emit=None) -> Order:
+_RELEASING_STATUSES = (OrderStatus.CANCELLED, OrderStatus.REFUNDED)
+
+
+def transition(order_id, to_status: str, *, actor: str, reason: str = "", emit=None,
+               notify: bool = True) -> Order:
     """Move an order along the FSM as *actor*; emits the status fact.
 
-    Pass *emit* to join a caller's ``mutate_and_emit`` block.
+    Pass *emit* to join a caller's ``mutate_and_emit`` block. Refunded is
+    reached only through :func:`refund_order` (the payment provider refunds
+    first).
     """
     if emit is None:
         with mutate_and_emit() as scoped:
-            return transition(order_id, to_status, actor=actor, reason=reason, emit=scoped)
+            return transition(order_id, to_status, actor=actor, reason=reason, emit=scoped,
+                              notify=notify)
     order = Order.objects.select_for_update().get(pk=order_id)
     try:
         fsm.check(order.status, to_status, actor)
@@ -66,16 +78,17 @@ def transition(order_id, to_status: str, *, actor: str, reason: str = "", emit=N
     from_status = order.status
     order.status = to_status
     order.save(update_fields=["status", "updated_at"])
-    if to_status == OrderStatus.CANCELLED:
+    if to_status in _RELEASING_STATUSES:
         hooks.release_for_order(order.pk)
     emit(  # emit-check: ok — emit is always a caller's mutate_and_emit emitter (see top)
         events.EVENT_STATUS_CHANGED,
         events.status_changed_payload(order, from_status, actor, reason),
         key=str(order.pk),
     )
-    events.notify_after_commit(
-        events.NOTIFY_STATUS_CHANGED, order, from_status=from_status, reason=reason
-    )
+    if notify:
+        events.notify_after_commit(
+            events.NOTIFY_STATUS_CHANGED, order, from_status=from_status, reason=reason
+        )
     return order
 
 
@@ -88,8 +101,46 @@ def cancel_owned(user_id: str, order_id) -> Order:
 
 
 def staff_transition(order_id, to_status: str, reason: str = "") -> Order:
+    if to_status == OrderStatus.REFUNDED:
+        return refund_order(order_id, reason)
     get_any(order_id)
     transition(order_id, to_status, actor=fsm.STAFF, reason=reason)
+    return get_any(order_id)
+
+
+def refund_order(order_id, reason: str = "") -> Order:
+    """Staff refund a paid order in full. Idempotent: a refunded order is
+    answered as it is, with no second fact, release or provider call.
+
+    The ``PAYMENT`` provider refunds first (inside this transaction; a
+    refusal changes nothing), then ``payment_status`` and ``status`` become
+    ``refunded``, the checkout hooks get ``release`` (reason ``cancelled``)
+    once it commits, and ``orders.order.refunded`` is emitted.
+    """
+    from ..payment import RefundUnsupported, active_provider
+
+    get_any(order_id)
+    with mutate_and_emit() as emit:
+        order = Order.objects.select_for_update().get(pk=order_id)
+        if (order.status, order.payment_status) == (OrderStatus.REFUNDED, PaymentStatus.REFUNDED):
+            return get_any(order_id)
+        if not fsm.allowed(order.status, OrderStatus.REFUNDED, fsm.STAFF):
+            raise _invalid(order, OrderStatus.REFUNDED)
+        if order.payment_status != PaymentStatus.PAID:
+            raise OrdersError(409, ERR_409_ORDER_NOT_REFUNDABLE,
+                              {"payment_status": order.payment_status})
+        provider = active_provider()
+        try:
+            provider.refund(order, emit)
+        except RefundUnsupported:
+            raise OrdersError(409, ERR_409_REFUND_UNSUPPORTED,
+                              {"provider": provider.name}) from None
+        order.payment_status = PaymentStatus.REFUNDED
+        order.save(update_fields=["payment_status", "updated_at"])
+        order = transition(order.pk, OrderStatus.REFUNDED, actor=fsm.STAFF, reason=reason,
+                           emit=emit, notify=False)
+        emit(events.EVENT_REFUNDED, events.refunded_payload(order), key=str(order.pk))
+        events.notify_after_commit(events.NOTIFY_REFUNDED, order, reason=reason)
     return get_any(order_id)
 
 
