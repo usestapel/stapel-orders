@@ -7,8 +7,40 @@ error envelope the tests assert is the one a host serves.
 """
 from __future__ import annotations
 
+import os
+
 #: The resolver Function the test catalog provides (tests/catalog.py).
 TEST_RESOLVER = "orders_test.purchasables"
+
+#: ``postgresql://user:password@host:port/db`` runs the suite on PostgreSQL
+#: (real row locks; tests/test_checkout_hooks_pg.py needs it). Unset: SQLite.
+TEST_PG_ENV = "STAPEL_ORDERS_TEST_PG"
+
+
+def _databases() -> dict:
+    url = os.environ.get(TEST_PG_ENV, "")
+    if not url:
+        return {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}}
+    from urllib.parse import urlsplit
+
+    parts = urlsplit(url)
+    return {"default": {
+        "ENGINE": "django.db.backends.postgresql",
+        "NAME": parts.path.lstrip("/"),
+        "USER": parts.username or "",
+        "PASSWORD": parts.password or "",
+        "HOST": parts.hostname or "",
+        "PORT": str(parts.port or ""),
+    }}
+
+
+def _migration_modules() -> dict:
+    """``users`` has no migrations here. On PostgreSQL its synced tables
+    reference ``auth`` at creation, so the framework apps sync with it;
+    stapel_orders always runs its own migrations from zero."""
+    if not os.environ.get(TEST_PG_ENV, ""):
+        return {"users": None}
+    return {app: None for app in ("users", "auth", "contenttypes", "admin", "sessions")}
 
 
 def settings_kwargs(
@@ -50,7 +82,7 @@ def settings_kwargs(
             "stapel_orders",
         ],
         AUTH_USER_MODEL="users.User",
-        DATABASES={"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": ":memory:"}},
+        DATABASES=_databases(),
         DEFAULT_AUTO_FIELD="django.db.models.BigAutoField",
         USE_TZ=True,
         ROOT_URLCONF=root_urlconf,
@@ -78,7 +110,7 @@ def settings_kwargs(
             "django.contrib.auth.middleware.AuthenticationMiddleware",
             "django.contrib.messages.middleware.MessageMiddleware",
         ],
-        MIGRATION_MODULES={"users": None},
+        MIGRATION_MODULES=_migration_modules(),
         REST_FRAMEWORK=rest_framework,
     )
 
@@ -96,9 +128,10 @@ def enum_name_overrides() -> dict:
     generated types from being renamed by an unrelated edit. Called after
     ``django.setup()``.
     """
-    from stapel_orders.models import OrderStatus, PaymentStatus
+    from stapel_orders.models import AdjustmentKind, OrderStatus, PaymentStatus
 
     return {
+        "AdjustmentKindEnum": AdjustmentKind,
         "OrderStatusEnum": OrderStatus,
         "PaymentStatusEnum": PaymentStatus,
     }

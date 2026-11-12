@@ -4,7 +4,53 @@ All notable changes to stapel-orders are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
-## [Unreleased]
+## [Unreleased] — proposed 0.2.0
+
+Checkout seams for commerce companions (promotions, delivery, inventory).
+With nothing registered, behaviour and API output are those of 0.1.0 plus
+additive fields.
+
+### Added
+- **`ADJUSTERS`** merge registry (`{name: {"quote", "order"}}`, empty by
+  default) and the contract `schemas/functions/adjusters.json`: adjusters
+  run in order, each seeing the adjustments before it and the client's
+  opaque `context`; `total = max(0, subtotal + adjustments)`. An error
+  refuses checkout with its key (`error.<4xx>.*` keeps its status, else
+  409); an unanswered or malformed adjuster is
+  `error.503.adjuster_unavailable` (fail closed).
+- **`POST cart/quote/`** (`CartQuoteRequest` → `CartQuoteResponse`: the
+  cart plus `adjustments` and `errors`, never failing on an adjuster's
+  refusal); swap key `STAPEL_ORDERS_QUOTE_PRESENTER`.
+- **`context`** on `CheckoutRequest` (opaque object, ≤ 8 KB) passed to every
+  adjuster and hook; checkout re-quotes inside its transaction.
+- **`OrderAdjustment`** snapshot rows; `adjustments` on `OrderResponse`
+  (kind, code, label, signed amount, line_index); in the GDPR export and the
+  admin.
+- **`CHECKOUT_HOOKS`** merge registry and the contracts
+  `schemas/functions/checkout_hooks.{reserve,commit,release}.json`: reserve
+  before the order row is written (refusal or silence refuses: fail
+  closed), commit after the order commits, release on a failed checkout and
+  on cancel; idempotent on `(attempt_key, name)`. `CheckoutHookState` rows
+  are written durably before reserve, so the hook sweep
+  (`stapel_orders.beat.sweep_checkout_hooks`, every 5 min, and `manage.py
+  sweep_checkout_hooks`) retries unanswered commits/releases and releases
+  orphans after `CHECKOUT_HOOK_ORPHAN_SECONDS` (900).
+- `orders.order.placed` carries `attempt_key` (the checkout idempotency key
+  as a lowercase hyphenated UUID; optional in the schema), so a companion
+  finds its checkout-hook intent from the fact.
+- `CartLine.attrs`: resolver fields beyond the purchasables contract
+  (scalars, ≤ 32), handed to adjusters and hooks as `lines[].attrs`.
+- Settings `MAX_ADJUSTMENTS` (20, part of the E005 money proof) and
+  `CHECKOUT_HOOK_ORPHAN_SECONDS`; checks E006 / E007 (malformed entries),
+  W003 (an adjuster or hook Function unreachable here).
+- Error keys `error.409.checkout_hook_refused`,
+  `error.409.checkout_attempt_conflict`, `error.503.adjuster_unavailable`,
+  `error.503.checkout_hook_unavailable`.
+- Migration `0002_checkout_seams`. Tests run on PostgreSQL when
+  `STAPEL_ORDERS_TEST_PG` is set (real-lock concurrency proofs in
+  `tests/test_checkout_hooks_pg.py`).
+- `docs/CONTRACT-DELTAS.md`: where the brick-wave spec was silent, the
+  reading built here.
 
 ## [0.1.0]
 

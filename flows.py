@@ -24,9 +24,11 @@ PURCHASE = Flow(
     title="Check out",
     description=(
         "The shopper submits contact and shipping details. Every line is "
-        "re-priced; a changed price refreshes the cart and asks again. The "
-        "order is placed, the cart emptied, and the payment provider started "
-        "in one transaction."
+        "re-priced; a changed price refreshes the cart and asks again. Installed "
+        "adjusters (discounts, shipping, tax) price the order and checkout "
+        "hooks (stock, redemptions) reserve before it is written. The order "
+        "is placed, the cart emptied, and the payment provider started in one "
+        "transaction."
     ),
     actors=["Shopper with an account (guests when CHECKOUT_REQUIRES_ACCOUNT is off)"],
 )

@@ -6,9 +6,12 @@
    currency change refreshes the snapshot, COMMITS it, and refuses with the
    refreshed cart in ``params.cart`` — the shopper is never charged a number
    they did not see, and the next submit succeeds.
-3. Otherwise, under the cart lock: order + lines + idempotency row, the cart
-   emptied, ``orders.order.placed`` emitted, the payment provider started —
-   all one transaction.
+3. Otherwise, under the cart lock: the cart is re-quoted through the
+   ``ADJUSTERS`` (any error refuses), every ``CHECKOUT_HOOKS`` entry
+   reserves (any refusal or silence refuses), then order + lines +
+   adjustments + idempotency row, the cart emptied, ``orders.order.placed``
+   emitted, the payment provider started — all one transaction. Hooks
+   commit after it commits and release when it fails (``services/hooks.py``).
 """
 from __future__ import annotations
 
@@ -21,7 +24,7 @@ from django.db import IntegrityError, transaction
 from django.utils import timezone
 from stapel_core.comm import mutate_and_emit
 
-from .. import money, registry
+from .. import money, registry, seams
 from ..errors import (
     ERR_400_CART_EMPTY,
     ERR_403_CHECKOUT_REQUIRES_ACCOUNT,
@@ -30,8 +33,15 @@ from ..errors import (
     ERR_409_PURCHASABLE_UNAVAILABLE,
     ERR_503_PURCHASABLE_UNAVAILABLE,
 )
-from ..models import CartLine, CheckoutAttempt, Order, OrderLine, PaymentStatus
-from . import OrdersError, events
+from ..models import (
+    CartLine,
+    CheckoutAttempt,
+    Order,
+    OrderAdjustment,
+    OrderLine,
+    PaymentStatus,
+)
+from . import OrdersError, events, hooks
 from .cart import get_cart, locked_cart
 
 logger = logging.getLogger(__name__)
@@ -138,6 +148,7 @@ def _reconcile(cart, lines: list[CartLine], resolved: dict) -> str | None:
         line.image = item.image
         line.url = item.url
         line.seller_id = item.seller_id
+        line.attrs = item.attrs
         line.line_total = money.line_total(item.price, line.quantity)
         line.save()
     if unavailable:
@@ -166,15 +177,45 @@ def _total_base(total, currency: str):
     return value.quantize(money.QUANTUM), base
 
 
+def seam_user_id(user) -> str | None:
+    """``user_id`` as adjusters and hooks see it: null for a guest account."""
+    return None if seams.is_guest(user) else str(user.pk)
+
+
+def quote_lines(user, currency: str, lines, context: dict) -> seams.Quote:
+    """Run the adjusters over *lines*; an empty cart asks nobody."""
+    if not lines:
+        return seams.Quote(currency=currency or "", subtotal=money.ZERO)
+    request = seams.build_request(
+        currency=currency, user_id=seam_user_id(user), lines=lines, context=context,
+    )
+    return seams.quote(request)
+
+
+def quote_cart(user, context: dict | None = None):
+    """``(cart, quote)`` of the caller's cart as it stands (no purchasable call)."""
+    cart = get_cart(str(user.pk))
+    lines = [] if cart is None else list(cart.lines.all())
+    currency = cart.currency if cart is not None else ""
+    return cart, quote_lines(user, currency, lines, context or {})
+
+
+def _refusal_from(error: seams.QuoteError) -> OrdersError:
+    return OrdersError(error.http_status(), error.code, {**error.params, "field": error.field})
+
+
 def _create_order(cart, lines, user_id, contact: Contact, address: Address,
-                  shipping_method: str, comment: str) -> Order:
+                  shipping_method: str, comment: str,
+                  quote: seams.Quote | None = None) -> Order:
     totals = [line.line_total for line in lines]
-    total = money.sum_lines(totals)
+    subtotal = money.sum_lines(totals)
+    adjustments = quote.adjustments if quote is not None else []
+    total = money.adjusted_total(subtotal, [a.amount for a in adjustments])
     total_base, base = _total_base(total, cart.currency)
     fields = dict(
         user_id=user_id,
         currency=cart.currency,
-        subtotal=total,
+        subtotal=subtotal,
         total=total,
         total_base=total_base,
         base_currency=base,
@@ -216,16 +257,35 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address,
             for line in lines
         ]
     )
+    if adjustments:
+        OrderAdjustment.objects.bulk_create(
+            [
+                OrderAdjustment(
+                    order=order,
+                    position=position,
+                    adjuster=adjustment.adjuster,
+                    kind=adjustment.kind,
+                    code=adjustment.code,
+                    label=adjustment.label,
+                    amount=adjustment.amount,
+                    line_index=adjustment.line_index,
+                    meta=adjustment.meta,
+                )
+                for position, adjustment in enumerate(adjustments)
+            ]
+        )
     return order
 
 
 def checkout(user, *, idempotency_key, contact: Contact, address: Address,
-             shipping_method: str = "", comment: str = "") -> tuple[Order, bool]:
+             shipping_method: str = "", comment: str = "",
+             context: dict | None = None) -> tuple[Order, bool]:
     """Place the caller's cart as an order. Returns ``(order, created)``."""
     refusal = requires_account_refusal(user)
     if refusal is not None:
         raise refusal
     user_id = str(user.pk)
+    context = context or {}
 
     replay = _replayed(user_id, idempotency_key)
     if replay is not None:
@@ -239,45 +299,65 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address,
         raise OrdersError(400, ERR_400_CART_EMPTY)
     resolved = _resolve_lines(pairs)
 
+    hook_names = hooks.prepare(idempotency_key, user_id)
+    reserved: list[str] = []
+    tokens: dict[str, str] = {}
     refusal_key = None
-    with mutate_and_emit() as emit:
-        cart = locked_cart(user_id)
-        replay = _replayed(user_id, idempotency_key)
-        if replay is not None:
-            return replay, False
-        lines = list(cart.lines.all())
-        if not lines:
-            raise OrdersError(400, ERR_400_CART_EMPTY)
-        late = [
-            (line.purchasable_type, line.purchasable_key)
-            for line in lines
-            if (line.purchasable_type, line.purchasable_key) not in resolved
-        ]
-        if late:
-            # Lines added between the read and the lock: rare, resolved here.
-            resolved.update(_resolve_lines(late))
-        refusal_key = _reconcile(cart, lines, resolved)
-        if refusal_key is None:
-            order = _create_order(cart, lines, user_id, contact, address,
-                                  shipping_method, comment)
-            CheckoutAttempt.objects.create(
-                user_id=user_id, idempotency_key=idempotency_key, order=order
-            )
-            emit(events.EVENT_PLACED, events.placed_payload(order, order.lines.all()),
-                 key=str(order.pk))
-            cart.lines.all().delete()
-            cart.currency = ""
-            cart.save(update_fields=["currency", "updated_at"])
-            events.cart_changed(user_id, 0)
+    try:
+        with mutate_and_emit() as emit:
+            cart = locked_cart(user_id)
+            replay = _replayed(user_id, idempotency_key)
+            if replay is not None:
+                return replay, False
+            lines = list(cart.lines.all())
+            if not lines:
+                raise OrdersError(400, ERR_400_CART_EMPTY)
+            late = [
+                (line.purchasable_type, line.purchasable_key)
+                for line in lines
+                if (line.purchasable_type, line.purchasable_key) not in resolved
+            ]
+            if late:
+                # Lines added between the read and the lock: rare, resolved here.
+                resolved.update(_resolve_lines(late))
+            refusal_key = _reconcile(cart, lines, resolved)
+            if refusal_key is None:
+                quote = quote_lines(user, cart.currency, lines, context)
+                if quote.errors:
+                    raise _refusal_from(quote.errors[0])
+                if hook_names:
+                    request = seams.build_request(
+                        currency=cart.currency, user_id=seam_user_id(user),
+                        lines=lines, context=context,
+                    )
+                    request["adjustments_so_far"] = [a.to_wire() for a in quote.adjustments]
+                    hooks.reserve_all(hook_names, request, idempotency_key, reserved, tokens)
+                order = _create_order(cart, lines, user_id, contact, address,
+                                      shipping_method, comment, quote)
+                CheckoutAttempt.objects.create(
+                    user_id=user_id, idempotency_key=idempotency_key, order=order
+                )
+                hooks.mark_placed(idempotency_key, reserved, order, tokens)
+                emit(events.EVENT_PLACED,
+                     events.placed_payload(order, order.lines.all(), idempotency_key),
+                     key=str(order.pk))
+                cart.lines.all().delete()
+                cart.currency = ""
+                cart.save(update_fields=["currency", "updated_at"])
+                events.cart_changed(user_id, 0)
 
-            from ..payment import active_provider
+                from ..payment import active_provider
 
-            status = active_provider().start(order, emit)
-            if status and status != PaymentStatus.UNPAID:
-                Order.objects.filter(pk=order.pk).update(payment_status=status)
-            events.notify_after_commit(events.NOTIFY_PLACED, order)
-        else:
-            cart.save(update_fields=["updated_at"])
+                status = active_provider().start(order, emit)
+                if status and status != PaymentStatus.UNPAID:
+                    Order.objects.filter(pk=order.pk).update(payment_status=status)
+                events.notify_after_commit(events.NOTIFY_PLACED, order)
+            else:
+                cart.save(update_fields=["updated_at"])
+    except BaseException:
+        if reserved:
+            hooks.release_now(idempotency_key, reserved, tokens)
+        raise
 
     if refusal_key is not None:
         from ..presenters import get_cart_presenter

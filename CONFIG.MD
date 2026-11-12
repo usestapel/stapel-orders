@@ -18,6 +18,10 @@ below. `CHECKOUT_REQUIRES_ACCOUNT` and `PAYMENT` are CTO-facing config axes.
 | CHECKOUT_REQUIRES_ACCOUNT | env | axis: a guest (anonymous account) is refused at checkout with `error.403.checkout_requires_account`. Not derived from the posture. | no | true |
 | MAX_LINE_QUANTITY | env | cap on one line's quantity; feeds the money-bound proof (E005). | no | 999 |
 | MAX_LINES_PER_CART | env | cap on distinct lines per cart; feeds the money-bound proof (E005). | no | 100 |
+| ADJUSTERS | settings | checkout price adjusters: {name: {"quote": "<comm function>", "order": int}} merged over the empty built-ins, None removes; applied by order (discount 100, shipping 200, tax 300). Contract `schemas/functions/adjusters.json`. A companion's settings fragment fills it. | no | {} |
+| CHECKOUT_HOOKS | settings | checkout reservations: {name: {"reserve", "commit", "release": "<comm function>", "order": int}} merged over the empty built-ins, None removes. Contracts `schemas/functions/checkout_hooks.*.json`. | no | {} |
+| MAX_ADJUSTMENTS | env | cap on adjustments one quote may carry across all adjusters; feeds the money-bound proof (E005). | no | 20 |
+| CHECKOUT_HOOK_ORPHAN_SECONDS | env | a checkout-hook reservation whose checkout never finished is released by the hook sweep (beat / `manage.py sweep_checkout_hooks`) after this age. | no | 900 |
 | CART_TTL_DAYS | env | carts untouched this long are purged (beat entry / `manage.py purge_carts`). | no | 30 |
 | BASE_CURRENCY | env | reporting currency of `Order.total_base`. | no | USD |
 | TOTAL_BASE_CONVERTER | settings | dotted path `(amount, currency, base) -> Decimal or None` computing `total_base`; default asks `currencies.convert`, NULL when unanswered. | no | stapel_orders.money.currencies_converter |

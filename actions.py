@@ -29,7 +29,7 @@ def _schema(name: str) -> dict:
 @on_action("user.merged", schema=_schema("user.merged"))
 def handle_user_merged(event):
     """Re-parent the guest's cart lines and orders to the surviving account."""
-    from .models import CheckoutAttempt, Order
+    from .models import CheckoutAttempt, CheckoutHookState, Order
     from .services.cart import merge_carts
 
     payload = event.payload or {}
@@ -52,6 +52,7 @@ def handle_user_merged(event):
             user_id=from_user_id, idempotency_key__in=survivor_keys
         ).delete()
         CheckoutAttempt.objects.filter(user_id=from_user_id).update(user_id=into_user_id)
+        CheckoutHookState.objects.filter(user_id=from_user_id).update(user_id=into_user_id)
     if cart["moved"] or cart["summed"] or cart["dropped"] or orders:
         logger.info(
             "user.merged %s -> %s: cart moved %s, summed %s, dropped %s; %s orders",

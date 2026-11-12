@@ -10,7 +10,7 @@
 [![license](https://img.shields.io/github/license/usestapel/stapel-orders)](https://github.com/usestapel/stapel-orders/blob/main/LICENSE)
 [![llms.txt](https://img.shields.io/badge/llms.txt-blue)](https://github.com/usestapel/stapel-orders/blob/main/docs/llms.txt)
 
-> Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact.
+> Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
 Part of the [Stapel framework](https://github.com/usestapel) — composable Django apps that deploy as a monolith or as microservices without changing module code.
 
@@ -26,13 +26,13 @@ pip install stapel-orders
 |---|---|
 | Version | `0.1.0` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
-| HTTP operations | 10 |
+| HTTP operations | 11 |
 | Config axes | 2 |
-| Usage surface | 11 |
-| Extension points | 7 |
-| Error codes | 54 |
+| Usage surface | 23 |
+| Extension points | 9 |
+| Error codes | 59 |
 | Documented flows | 4 |
-| Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-currencies`](https://github.com/usestapel/stapel-currencies) (optional) · [`stapel-listings`](https://github.com/usestapel/stapel-listings) (optional) |
+| Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-currencies`](https://github.com/usestapel/stapel-currencies) (optional) · [`stapel-delivery`](https://github.com/usestapel/stapel-delivery) (optional) · [`stapel-inventory`](https://github.com/usestapel/stapel-inventory) (optional) · [`stapel-listings`](https://github.com/usestapel/stapel-listings) (optional) · [`stapel-promotions`](https://github.com/usestapel/stapel-promotions) (optional) |
 
 ## Documentation
 
@@ -64,7 +64,7 @@ STAPEL_ORDERS = {
 # urls.py
 path("orders/api/", include("stapel_orders.urls"))   # -> /orders/api/v1/...
 
-# settings.py — the abandoned-cart purge (Celery optional)
+# settings.py — the abandoned-cart purge and the checkout-hook sweep (Celery optional)
 from stapel_orders.beat import get_orders_beat_schedule
 CELERY_BEAT_SCHEDULE = {**get_orders_beat_schedule()}
 ```
@@ -101,6 +101,16 @@ register_purchasable_type("part", {"resolve": "parts.purchasables"})
   cart and refuses with it in `params.cart`, so the shopper is never charged
   a number they did not see. Guests are asked to sign in unless
   `CHECKOUT_REQUIRES_ACCOUNT` is off.
+- **Checkout seams** — commerce companions plug in by settings, never by
+  import. `ADJUSTERS` (discounts, shipping, tax) price the cart; `POST
+  cart/quote/` shows their lines and errors with the client's opaque
+  `context` (promo codes, delivery choice), and checkout re-quotes, refuses
+  on any error and snapshots the adjustments: `total = max(0, subtotal +
+  adjustments)`. `CHECKOUT_HOOKS` (stock, redemptions) reserve before the
+  order is written, commit once it is placed, release on failure or cancel;
+  a crashed checkout is released by the hook sweep. Both registries ship
+  empty, and a silent companion refuses the checkout instead of being
+  skipped.
 - **Order** — `new → confirmed → shipped → completed`, cancel from `new` by
   the buyer (`OWNER_CANCELLABLE_STATUSES`), staff for the rest, `needs_review`
   when a payment does not match. History is anchor-paginated.

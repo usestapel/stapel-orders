@@ -19,10 +19,12 @@ from stapel_core.flows import flow_step
 
 from .flows import CART, HISTORY, PURCHASE, STAFF_FULFILMENT
 from .models import OrderStatus
-from .presenters import get_cart_presenter, get_order_presenter
+from .presenters import get_cart_presenter, get_order_presenter, get_quote_presenter
 from .serializers import (
     CartLineAddRequestSerializer,
     CartLineUpdateRequestSerializer,
+    CartQuoteRequestSerializer,
+    CartQuoteResponseSerializer,
     CartResponseSerializer,
     CheckoutRequestSerializer,
     OrderPageSerializer,
@@ -137,6 +139,31 @@ class CartLineDetailView(_OrdersView):
 
 
 @extend_schema(tags=TAGS)
+class CartQuoteView(_OrdersView):
+    """Price the cart through the ADJUSTERS with the client's ``context``.
+
+    Never fails on an adjuster's refusal: errors come back in ``errors`` (the
+    same ones checkout would refuse with). Asks no purchasable resolver.
+    """
+
+    permission_classes = [permissions.IsAuthenticated]
+    stapel_anonymous_access = ANONYMOUS_ALLOWED
+    request_serializer_class = CartQuoteRequestSerializer
+    response_serializer_class = CartQuoteResponseSerializer
+
+    @extend_schema(
+        operation_id="orders_cart_quote",
+        request=CartQuoteRequestSerializer,
+        responses={200: CartQuoteResponseSerializer},
+    )
+    @flow_step(PURCHASE, order=5, note="Re-quote the cart with codes and a delivery choice before submitting")
+    def post(self, request):
+        data = self.validated_request_data(request)
+        cart, quote = checkout_service.quote_cart(request.user, data.get("context") or {})
+        return self.serialized_response(get_quote_presenter()().present(cart, quote))
+
+
+@extend_schema(tags=TAGS)
 class CheckoutView(_OrdersView):
     """Turn the cart into an order. Idempotent on ``idempotency_key``.
 
@@ -178,6 +205,7 @@ class CheckoutView(_OrdersView):
             ),
             shipping_method=data.get("shipping_method", ""),
             comment=data.get("comment", ""),
+            context=data.get("context") or {},
         )
         return self._order_response(order, status=201 if created else 200)
 

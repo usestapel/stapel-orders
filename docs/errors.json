@@ -32,6 +32,16 @@
     "owner": "stapel_orders"
   },
   {
+    "code": "error.400.checkout_context_too_large",
+    "status": 400,
+    "params": [
+      "max_bytes"
+    ],
+    "remediation": "fix_input",
+    "en": "The checkout details are larger than {max_bytes} bytes",
+    "owner": "stapel_orders"
+  },
+  {
     "code": "error.400.expected_list",
     "status": 400,
     "params": [],
@@ -348,6 +358,22 @@
     "owner": "stapel_orders"
   },
   {
+    "code": "error.409.checkout_attempt_conflict",
+    "status": 409,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "This checkout key is already in use; start checkout again",
+    "owner": "stapel_orders"
+  },
+  {
+    "code": "error.409.checkout_hook_refused",
+    "status": 409,
+    "params": [],
+    "remediation": "fix_input",
+    "en": "The order cannot be placed right now; review the cart and submit again",
+    "owner": "stapel_orders"
+  },
+  {
     "code": "error.409.conflict",
     "status": 409,
     "params": [],
@@ -447,6 +473,22 @@
     "remediation": "contact_support",
     "en": "Something went wrong",
     "owner": "stapel_core"
+  },
+  {
+    "code": "error.503.adjuster_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "Prices for this order cannot be calculated right now; try again shortly",
+    "owner": "stapel_orders"
+  },
+  {
+    "code": "error.503.checkout_hook_unavailable",
+    "status": 503,
+    "params": [],
+    "remediation": "wait_and_retry",
+    "en": "The order cannot be placed right now; try again shortly",
+    "owner": "stapel_orders"
   },
   {
     "code": "error.503.mandate_unavailable",

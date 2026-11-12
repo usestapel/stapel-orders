@@ -3,7 +3,8 @@
 Owner reads are scoped by ``user_id``: a foreign id and an absent id answer
 the same 404. Every status move goes through :func:`transition`, which
 checks the table in ``fsm.py`` and emits ``orders.order.status_changed`` in
-the same transaction.
+the same transaction. A cancel releases the order's checkout-hook
+reservations once it commits.
 """
 from __future__ import annotations
 
@@ -16,7 +17,7 @@ from stapel_core.comm import mutate_and_emit
 from .. import fsm
 from ..errors import ERR_404_ORDER_NOT_FOUND, ERR_409_ORDER_TRANSITION_INVALID
 from ..models import Order, OrderStatus, PaymentStatus
-from . import OrdersError, events
+from . import OrdersError, events, hooks
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def orders_for(user_id: str, statuses=None) -> QuerySet:
     statuses = [s for s in (statuses or []) if s]
     if statuses:
         qs = qs.filter(status__in=statuses)
-    return qs.prefetch_related("lines")
+    return qs.prefetch_related("lines", "adjustments")
 
 
 def get_owned(user_id: str, order_id) -> Order:
@@ -37,7 +38,7 @@ def get_owned(user_id: str, order_id) -> Order:
 
 
 def get_any(order_id) -> Order:
-    order = Order.objects.prefetch_related("lines").filter(pk=order_id).first()
+    order = Order.objects.prefetch_related("lines", "adjustments").filter(pk=order_id).first()
     if order is None:
         raise OrdersError(404, ERR_404_ORDER_NOT_FOUND)
     return order
@@ -65,6 +66,8 @@ def transition(order_id, to_status: str, *, actor: str, reason: str = "", emit=N
     from_status = order.status
     order.status = to_status
     order.save(update_fields=["status", "updated_at"])
+    if to_status == OrderStatus.CANCELLED:
+        hooks.release_for_order(order.pk)
     emit(  # emit-check: ok — emit is always a caller's mutate_and_emit emitter (see top)
         events.EVENT_STATUS_CHANGED,
         events.status_changed_payload(order, from_status, actor, reason),

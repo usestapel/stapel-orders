@@ -6,11 +6,15 @@ component after its serializer minus the ``Serializer`` suffix
 client from those names. Every CharField declares a ``max_length``; money
 is a ``DecimalField`` rendered as a string.
 """
+import json
+
 from django.core.validators import EmailValidator
 from rest_framework import serializers
+from stapel_core.django.api.errors import StapelValidationError
 
-from . import money
 from . import models as m
+from . import money
+from .errors import ERR_400_CHECKOUT_CONTEXT_TOO_LARGE
 
 
 def _money(max_digits: int, **kwargs):
@@ -20,6 +24,40 @@ def _money(max_digits: int, **kwargs):
         coerce_to_string=True,
         **kwargs,
     )
+
+
+#: Serialized size bound of the opaque checkout ``context``.
+CONTEXT_MAX_BYTES = 8192
+
+
+def _context_field():
+    return serializers.DictField(
+        required=False, default=dict,
+        help_text="Opaque object for the adjusters and hooks (e.g. codes, delivery); "
+                  "each key is validated by the adjuster that owns it, never by orders.",
+    )
+
+
+def _check_context(value):
+    if len(json.dumps(value, default=str)) > CONTEXT_MAX_BYTES:
+        raise StapelValidationError(
+            ERR_400_CHECKOUT_CONTEXT_TOO_LARGE, {"max_bytes": CONTEXT_MAX_BYTES}
+        )
+    return value
+
+
+class AdjustmentSerializer(serializers.Serializer):
+    kind = serializers.ChoiceField(choices=m.AdjustmentKind.choices)
+    code = serializers.CharField(max_length=m.ADJUSTMENT_CODE_MAX_LENGTH, allow_blank=True)
+    label = serializers.CharField(max_length=m.TITLE_MAX_LENGTH, allow_blank=True)
+    amount = _money(money.ADJUSTMENT_MAX_DIGITS)
+    line_index = serializers.IntegerField(min_value=0, allow_null=True)
+
+
+class QuoteErrorSerializer(serializers.Serializer):
+    code = serializers.CharField(max_length=128)
+    field = serializers.CharField(max_length=128, allow_null=True)
+    params = serializers.DictField()
 
 
 # ── Cart ──────────────────────────────────────────────────────────────────
@@ -47,6 +85,18 @@ class CartResponseSerializer(serializers.Serializer):
     subtotal = _money(money.ORDER_TOTAL_MAX_DIGITS)
     total = _money(money.ORDER_TOTAL_MAX_DIGITS)
     updated_at = serializers.DateTimeField(allow_null=True)
+
+
+class CartQuoteRequestSerializer(serializers.Serializer):
+    context = _context_field()
+
+    def validate_context(self, value):
+        return _check_context(value)
+
+
+class CartQuoteResponseSerializer(CartResponseSerializer):
+    adjustments = AdjustmentSerializer(many=True)
+    errors = QuoteErrorSerializer(many=True)
 
 
 class CartLineAddRequestSerializer(serializers.Serializer):
@@ -106,6 +156,10 @@ class CheckoutRequestSerializer(serializers.Serializer):
     comment = serializers.CharField(
         max_length=m.COMMENT_MAX_LENGTH, required=False, allow_blank=True, default=""
     )
+    context = _context_field()
+
+    def validate_context(self, value):
+        return _check_context(value)
 
 
 # ── Orders ────────────────────────────────────────────────────────────────
@@ -133,6 +187,7 @@ class OrderResponseSerializer(serializers.Serializer):
     subtotal = _money(money.ORDER_TOTAL_MAX_DIGITS)
     total = _money(money.ORDER_TOTAL_MAX_DIGITS)
     lines = OrderLineSerializer(many=True)
+    adjustments = AdjustmentSerializer(many=True)
     contact = ContactSnapshotSerializer()
     shipping_address = AddressSnapshotSerializer()
     shipping_method = serializers.CharField(max_length=m.SHIPPING_METHOD_MAX_LENGTH, allow_blank=True)

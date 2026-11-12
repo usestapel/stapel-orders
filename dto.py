@@ -42,6 +42,34 @@ class CartDTO:
 
 
 @dataclass
+class AdjustmentDTO:
+    """One price adjustment (discount, shipping, tax, fee), signed."""
+
+    kind: str
+    code: str
+    label: str
+    amount: Decimal
+    line_index: Optional[int]
+
+
+@dataclass
+class QuoteErrorDTO:
+    """One refusal an adjuster answered for the quoted cart."""
+
+    code: str
+    field: Optional[str]
+    params: dict
+
+
+@dataclass
+class CartQuoteDTO(CartDTO):
+    """The cart priced by the adjusters; ``total`` includes the adjustments."""
+
+    adjustments: list[AdjustmentDTO] = field(default_factory=list)
+    errors: list[QuoteErrorDTO] = field(default_factory=list)
+
+
+@dataclass
 class ContactDTO:
     """Contact snapshot taken at checkout."""
 
@@ -97,3 +125,4 @@ class OrderDTO:
     created_at: datetime.datetime
     updated_at: datetime.datetime
     cancellable: bool
+    adjustments: list[AdjustmentDTO] = field(default_factory=list)

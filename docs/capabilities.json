@@ -1,7 +1,7 @@
 {
   "module": "stapel-orders",
   "version": "0.1.0",
-  "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact.",
+  "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.",
   "axes": [
     {
       "key": "CHECKOUT_REQUIRES_ACCOUNT",
@@ -41,6 +41,16 @@
       "summary": "What can be bought. {type_name: {'resolve': '<comm function>'}} merged over the empty built-ins; None removes a type. The resolver is one keyed batch for every type ({keys} -> {key: {title, price, currency, available, max_quantity, seller_id, image, url}}), so a custom app registers its product type in about twenty lines and orders never imports its model."
     },
     {
+      "name": "ADJUSTERS",
+      "kind": "merge_registry",
+      "summary": "Price adjustments at quote and checkout. {name: {'quote': '<comm function>', 'order': int}} merged over the empty built-ins, applied by order (discounts 100, shipping 200, tax 300). Each answers {adjustments, errors} for the cart and the client's opaque context (schemas/functions/adjusters.json); total = max(0, subtotal + adjustments). Any error refuses checkout, the quote endpoint shows it; a silent adjuster is error.503.adjuster_unavailable."
+    },
+    {
+      "name": "CHECKOUT_HOOKS",
+      "kind": "merge_registry",
+      "summary": "Reservations around checkout. {name: {'reserve', 'commit', 'release': '<comm function>'}}: reserve before the order row is written (refusal or silence refuses the checkout), commit once it is placed, release on a failed checkout, on cancel, and for crashed checkouts by the hook sweep. Idempotent on (attempt_key, name); state kept per hook in CheckoutHookState (schemas/functions/checkout_hooks.*.json)."
+    },
+    {
       "name": "PAYMENT",
       "kind": "strategy",
       "summary": "How an order is paid: a short name from the payment registry (none, mock, plus register_payment_provider names) or a dotted path. The provider starts a payment inside the checkout transaction; the outcome always arrives as payment.completed, which is the only path that marks an order paid."
@@ -51,9 +61,9 @@
       "summary": "Dotted path (amount, currency, base) -> Decimal | None computing Order.total_base for reporting. Default asks currencies.convert by name; no answer stores NULL, never a guess."
     },
     {
-      "name": "STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER",
+      "name": "STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER / STAPEL_ORDERS_QUOTE_PRESENTER",
       "kind": "presenter",
-      "summary": "Swap keys (STAPEL_SWAP) for the cart and order response presenters, so a host changes what the API shows without forking a view."
+      "summary": "Swap keys (STAPEL_SWAP) for the cart, order and cart-quote response presenters, so a host changes what the API shows without forking a view."
     },
     {
       "name": "orders.order.placed",
@@ -137,9 +147,81 @@
       "kind": "predicate",
       "path": "stapel_orders.registry.resolver_name",
       "intent": "The comm Function name that resolves a type, or UnknownPurchasableType."
+    },
+    {
+      "name": "adjuster_entry_problem",
+      "kind": "predicate",
+      "path": "stapel_orders.seams.adjuster_entry_problem",
+      "intent": "Why an ADJUSTERS entry is malformed, or None; system check E006 asks it."
+    },
+    {
+      "name": "build_request",
+      "kind": "factory",
+      "path": "stapel_orders.seams.build_request",
+      "intent": "The adjuster request for a cart's lines (currency, subtotal, lines with attrs, context); reserve adds adjustments_so_far and attempt_key to it."
+    },
+    {
+      "name": "call_seam",
+      "kind": "gate_function",
+      "path": "stapel_orders.seams.call_seam",
+      "intent": "Call an adjuster or hook Function and validate its reply against the seam contract; raises SeamUnavailable instead of guessing, which orders turns into a 503 refusal."
+    },
+    {
+      "name": "get_adjusters",
+      "kind": "predicate",
+      "path": "stapel_orders.seams.get_adjusters",
+      "intent": "The effective adjusters (built-ins <- settings <- runtime) in application order; ask it rather than reading the setting."
+    },
+    {
+      "name": "get_checkout_hooks",
+      "kind": "predicate",
+      "path": "stapel_orders.seams.get_checkout_hooks",
+      "intent": "The effective checkout hooks in reserve order (release runs in reverse)."
+    },
+    {
+      "name": "hook_entry_problem",
+      "kind": "predicate",
+      "path": "stapel_orders.seams.hook_entry_problem",
+      "intent": "Why a CHECKOUT_HOOKS entry is malformed, or None; system check E007 asks it."
+    },
+    {
+      "name": "is_guest",
+      "kind": "predicate",
+      "path": "stapel_orders.seams.is_guest",
+      "intent": "Is this user a stapel-auth anonymous account? Adjusters and hooks then see user_id null."
+    },
+    {
+      "name": "parse_errors",
+      "kind": "gate_function",
+      "path": "stapel_orders.seams.parse_errors",
+      "intent": "Parse an adjuster's or hook's errors list into QuoteError values; malformed entries raise SeamUnavailable."
+    },
+    {
+      "name": "quote",
+      "kind": "gate_function",
+      "path": "stapel_orders.seams.quote",
+      "intent": "Run every adjuster in order over a request and return the Quote (adjustments, errors, floored total). Never raises: a silent adjuster becomes an error.503.adjuster_unavailable entry."
+    },
+    {
+      "name": "register_adjuster",
+      "kind": "factory",
+      "path": "stapel_orders.seams.register_adjuster",
+      "intent": "Register or override an adjuster at runtime (None removes) — a test lever and an escape hatch; companions register through STAPEL_ORDERS['ADJUSTERS'] in their settings fragment because they never import orders."
+    },
+    {
+      "name": "register_checkout_hook",
+      "kind": "factory",
+      "path": "stapel_orders.seams.register_checkout_hook",
+      "intent": "Register or override a checkout hook at runtime (None removes); companions use STAPEL_ORDERS['CHECKOUT_HOOKS'] instead."
+    },
+    {
+      "name": "reset_seams",
+      "kind": "factory",
+      "path": "stapel_orders.seams.reset_seams",
+      "intent": "Drop runtime adjusters and hooks — a test lever."
     }
   ],
-  "operations_total": 10,
+  "operations_total": 11,
   "requires": [
     {
       "module": "stapel-core",
@@ -160,6 +242,21 @@
       "module": "stapel-currencies",
       "optional": true,
       "reason": "currencies.convert fills Order.total_base for reporting; without it total_base stays NULL"
+    },
+    {
+      "module": "stapel-promotions",
+      "optional": true,
+      "reason": "registers a discount adjuster and a redemption checkout hook through its settings fragment"
+    },
+    {
+      "module": "stapel-delivery",
+      "optional": true,
+      "reason": "registers a shipping adjuster; reads the delivery choice from the checkout context"
+    },
+    {
+      "module": "stapel-inventory",
+      "optional": true,
+      "reason": "registers a stock reservation checkout hook (reserve / commit / release)"
     }
   ]
 }

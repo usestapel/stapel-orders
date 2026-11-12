@@ -18,7 +18,9 @@ keyed batch for every type::
     {"keys": [str, ...]}  ->  {key: {"title", "price", "currency",
         "available", "max_quantity", "seller_id", "image", "url"}}
 
-An absent key is unknown. Orders asks the resolver only on add and at
+An absent key is unknown. Fields beyond these (a weight, a tax class) are
+kept as the line's ``attrs`` — scalars only, bounded — and handed to the
+checkout adjusters and hooks untouched. Orders asks the resolver only on add and at
 checkout; reading a cart never calls it. The call rides
 ``FUNCTION_TRANSPORT`` — monolith or fleet is a transport question only.
 """
@@ -26,7 +28,8 @@ from __future__ import annotations
 
 import json
 import logging
-from dataclasses import dataclass
+import math
+from dataclasses import dataclass, field
 from decimal import Decimal
 from pathlib import Path
 from typing import Optional
@@ -42,6 +45,14 @@ _runtime_types: dict[str, Optional[dict]] = {}
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schemas" / "functions" / "purchasables.json"
 _schema_cache: dict | None = None
+
+#: Item fields the purchasables contract names; everything else is ``attrs``.
+KNOWN_ITEM_FIELDS = frozenset(
+    ("title", "price", "currency", "available", "max_quantity", "seller_id", "image", "url")
+)
+ATTRS_MAX_KEYS = 32
+ATTRS_KEY_MAX_LENGTH = 64
+ATTRS_STRING_MAX_LENGTH = 255
 
 
 class UnknownPurchasableType(Exception):
@@ -67,6 +78,31 @@ class Resolved:
     seller_id: str
     image: str
     url: str
+    attrs: dict = field(default_factory=dict)
+
+
+def _attr_value_ok(value) -> bool:
+    if value is None or isinstance(value, (bool, int)):
+        return True
+    if isinstance(value, float):
+        return math.isfinite(value)
+    return isinstance(value, str) and len(value) <= ATTRS_STRING_MAX_LENGTH
+
+
+def _extract_attrs(raw: dict) -> dict:
+    """The resolver's extra scalar fields, sorted, at most ``ATTRS_MAX_KEYS``.
+
+    Non-scalar values, over-long keys or strings are dropped, never guessed.
+    """
+    extras = {
+        key: raw[key]
+        for key in sorted(raw)
+        if key not in KNOWN_ITEM_FIELDS
+        and isinstance(key, str)
+        and 0 < len(key) <= ATTRS_KEY_MAX_LENGTH
+        and _attr_value_ok(raw[key])
+    }
+    return dict(list(extras.items())[:ATTRS_MAX_KEYS])
 
 
 def register_purchasable_type(name: str, entry: Optional[dict]) -> None:
@@ -147,6 +183,7 @@ def _parse(name: str, key: str, raw) -> Resolved:
         seller_id=str(raw.get("seller_id") or "")[:64],
         image=str(raw.get("image") or "")[:500],
         url=str(raw.get("url") or "")[:500],
+        attrs=_extract_attrs(raw),
     )
 
 

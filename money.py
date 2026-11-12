@@ -4,8 +4,12 @@ The bound proof lives here as data, so the test, the system check and the
 models read one source:
 
     lines <= MAX_LINES_PER_CART, quantity <= MAX_LINE_QUANTITY,
-    unit_price < 10**UNIT_PRICE_INTEGER_DIGITS
+    unit_price < 10**UNIT_PRICE_INTEGER_DIGITS,
+    adjustments <= MAX_ADJUSTMENTS, |amount| < 10**ADJUSTMENT_INTEGER_DIGITS
     =>  total < 10**TOTAL_INTEGER_DIGITS
+
+``total = max(0, subtotal + sum(adjustments))``: a discount can only lower
+it, so the positive side of each adjustment is what the proof counts.
 
 ``max_total_exclusive()`` computes the left side from the effective settings;
 ``columns_hold()`` compares it with the column widths.
@@ -25,13 +29,18 @@ QUANTUM = Decimal("0.01")
 UNIT_PRICE_MAX_DIGITS = 12
 LINE_TOTAL_MAX_DIGITS = 16
 ORDER_TOTAL_MAX_DIGITS = 18
+ADJUSTMENT_MAX_DIGITS = 16
 
 UNIT_PRICE_INTEGER_DIGITS = UNIT_PRICE_MAX_DIGITS - DECIMAL_PLACES
 LINE_TOTAL_INTEGER_DIGITS = LINE_TOTAL_MAX_DIGITS - DECIMAL_PLACES
 TOTAL_INTEGER_DIGITS = ORDER_TOTAL_MAX_DIGITS - DECIMAL_PLACES
+ADJUSTMENT_INTEGER_DIGITS = ADJUSTMENT_MAX_DIGITS - DECIMAL_PLACES
 
 #: Strict upper bound of a unit price the resolver may answer.
 UNIT_PRICE_LIMIT = Decimal(10) ** UNIT_PRICE_INTEGER_DIGITS
+#: Strict upper bound of an adjustment's magnitude an adjuster may answer.
+ADJUSTMENT_LIMIT = Decimal(10) ** ADJUSTMENT_INTEGER_DIGITS
+ZERO = Decimal("0.00")
 
 
 class MalformedPrice(ValueError):
@@ -58,6 +67,33 @@ def parse_price(raw) -> Decimal:
     return value.quantize(QUANTUM)
 
 
+def parse_adjustment(raw) -> Decimal:
+    """An adjuster's signed amount string as a Decimal, or raise :class:`MalformedPrice`.
+
+    Strings only (the wire contract); at most 2 dp; magnitude below the
+    adjustment column.
+    """
+    if not isinstance(raw, str):
+        raise MalformedPrice(f"amount must be a decimal string, got {raw!r}")
+    try:
+        value = Decimal(raw.strip())
+    except (InvalidOperation, ValueError):
+        raise MalformedPrice(f"amount is not a decimal: {raw!r}") from None
+    if not value.is_finite():
+        raise MalformedPrice(f"amount must be finite: {raw!r}")
+    if value != value.quantize(QUANTUM):
+        raise MalformedPrice(f"amount has more than {DECIMAL_PLACES} decimal places: {raw!r}")
+    if abs(value) >= ADJUSTMENT_LIMIT:
+        raise MalformedPrice(f"amount {raw!r} does not fit the adjustment column")
+    return value.quantize(QUANTUM)
+
+
+def adjusted_total(subtotal: Decimal, amounts) -> Decimal:
+    """``subtotal + sum(amounts)``, floored at zero; never re-rounded."""
+    total = subtotal + sum_lines(amounts)
+    return total if total > ZERO else ZERO
+
+
 def line_total(unit_price: Decimal, quantity: int) -> Decimal:
     """``unit_price * quantity`` quantized ROUND_HALF_UP to 2 dp."""
     return (unit_price * quantity).quantize(QUANTUM, rounding=ROUND_HALF_UP)
@@ -79,16 +115,20 @@ def max_line_total_exclusive(max_line_quantity: int) -> Decimal:
     return UNIT_PRICE_LIMIT * max_line_quantity
 
 
-def max_total_exclusive(max_line_quantity: int, max_lines: int) -> Decimal:
-    return max_line_total_exclusive(max_line_quantity) * max_lines
+def max_total_exclusive(max_line_quantity: int, max_lines: int,
+                        max_adjustments: int = 0) -> Decimal:
+    return (
+        max_line_total_exclusive(max_line_quantity) * max_lines
+        + ADJUSTMENT_LIMIT * max_adjustments
+    )
 
 
-def columns_hold(max_line_quantity: int, max_lines: int) -> bool:
+def columns_hold(max_line_quantity: int, max_lines: int, max_adjustments: int = 0) -> bool:
     """Do the line and order columns hold the largest possible values?"""
     return (
         max_line_total_exclusive(max_line_quantity)
         <= Decimal(10) ** LINE_TOTAL_INTEGER_DIGITS
-        and max_total_exclusive(max_line_quantity, max_lines)
+        and max_total_exclusive(max_line_quantity, max_lines, max_adjustments)
         <= Decimal(10) ** TOTAL_INTEGER_DIGITS
     )
 

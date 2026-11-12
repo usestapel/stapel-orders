@@ -170,7 +170,7 @@
     "id": "orders.purchase",
     "title": "Check out",
     "title_key": "flow.orders.purchase.title",
-    "description": "The shopper submits contact and shipping details. Every line is re-priced; a changed price refreshes the cart and asks again. The order is placed, the cart emptied, and the payment provider started in one transaction.",
+    "description": "The shopper submits contact and shipping details. Every line is re-priced; a changed price refreshes the cart and asks again. Installed adjusters (discounts, shipping, tax) price the order and checkout hooks (stock, redemptions) reserve before it is written. The order is placed, the cart emptied, and the payment provider started in one transaction.",
     "description_key": "flow.orders.purchase.description",
     "actors": [
       "Shopper with an account (guests when CHECKOUT_REQUIRES_ACCOUNT is off)"
@@ -209,6 +209,19 @@
         "note": "A payment fact marks the order paid",
         "note_key": "flow.orders.purchase.step.4.note",
         "ref": "payment.completed"
+      },
+      {
+        "kind": "http",
+        "order": 5,
+        "note": "Re-quote the cart with codes and a delivery choice before submitting",
+        "note_key": "flow.orders.purchase.step.5.note",
+        "ref": "stapel_orders.views.CartQuoteView.post",
+        "endpoints": [
+          {
+            "method": "POST",
+            "path": "/orders/api/v1/cart/quote/"
+          }
+        ]
       }
     ]
   }

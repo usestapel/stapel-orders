@@ -1,8 +1,8 @@
 # stapel-orders 0.1.0
 
-Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact.
+Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
-Contract: axes 2 · surface 11 · extension points 7 · operations 10 · error codes 54 · flows 4.
+Contract: axes 2 · surface 23 · extension points 9 · operations 11 · error codes 59 · flows 4.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -15,13 +15,29 @@ Settings keys; `default` is what you get by saying nothing. Turning an axis off 
 ## Usage surface — call these before writing your own
 This is the answer to "does Stapel already have something for X?". `instead of` names the outside symbol this one displaces.
 ### gate_function
+- call_seam — stapel_orders.seams.call_seam
+  Call an adjuster or hook Function and validate its reply against the seam contract; raises SeamUnavailable instead of guessing, which orders turns into a 503 refusal.
+- parse_errors — stapel_orders.seams.parse_errors
+  Parse an adjuster's or hook's errors list into QuoteError values; malformed entries raise SeamUnavailable.
+- quote — stapel_orders.seams.quote
+  Run every adjuster in order over a request and return the Quote (adjustments, errors, floored total). Never raises: a silent adjuster becomes an error.503.adjuster_unavailable entry.
 - resolve — stapel_orders.registry.resolve
   Resolve keys of one type in one call through the transport, validated against the purchasables contract. Raises ResolverUnavailable instead of guessing; orders answers 503 on it.
 - resolve_many — stapel_orders.registry.resolve_many
   resolve() over (type, key) pairs, one call per type.
 ### predicate
+- adjuster_entry_problem — stapel_orders.seams.adjuster_entry_problem
+  Why an ADJUSTERS entry is malformed, or None; system check E006 asks it.
+- get_adjusters — stapel_orders.seams.get_adjusters
+  The effective adjusters (built-ins <- settings <- runtime) in application order; ask it rather than reading the setting.
+- get_checkout_hooks — stapel_orders.seams.get_checkout_hooks
+  The effective checkout hooks in reserve order (release runs in reverse).
 - get_purchasable_types — stapel_orders.registry.get_purchasable_types
   The effective registry (built-ins <- settings <- runtime). Ask it instead of reading the setting, which misses runtime registrations.
+- hook_entry_problem — stapel_orders.seams.hook_entry_problem
+  Why a CHECKOUT_HOOKS entry is malformed, or None; system check E007 asks it.
+- is_guest — stapel_orders.seams.is_guest
+  Is this user a stapel-auth anonymous account? Adjusters and hooks then see user_id null.
 - payment_names — stapel_orders.payment.payment_names
   The short names PAYMENT accepts; also the environment vocabulary.
 - resolver_name — stapel_orders.registry.resolver_name
@@ -29,6 +45,12 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 ### factory
 - active_provider — stapel_orders.payment.active_provider
   The provider this deployment runs (orders_settings.PAYMENT).
+- build_request — stapel_orders.seams.build_request
+  The adjuster request for a cart's lines (currency, subtotal, lines with attrs, context); reserve adds adjustments_so_far and attempt_key to it.
+- register_adjuster — stapel_orders.seams.register_adjuster
+  Register or override an adjuster at runtime (None removes) — a test lever and an escape hatch; companions register through STAPEL_ORDERS['ADJUSTERS'] in their settings fragment because they never import orders.
+- register_checkout_hook — stapel_orders.seams.register_checkout_hook
+  Register or override a checkout hook at runtime (None removes); companions use STAPEL_ORDERS['CHECKOUT_HOOKS'] instead.
 - register_payment_provider — stapel_orders.payment.register_payment_provider
   Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome still arrives as payment.completed.
 - register_purchasable_type — stapel_orders.registry.register_purchasable_type
@@ -37,16 +59,22 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   Drop registered providers — a test lever.
 - reset_purchasable_types — stapel_orders.registry.reset_purchasable_types
   Drop runtime registrations, leaving settings untouched — a test lever. Product code calling it is undoing a registration that belongs in settings.
+- reset_seams — stapel_orders.seams.reset_seams
+  Drop runtime adjusters and hooks — a test lever.
 - resolve_payment — stapel_orders.payment.resolve_payment
   Turn a PAYMENT value (short name or dotted path) into a provider; the AppSettings resolver for the key.
 
 ## Extension points — what a product replaces, fork-free
+- ADJUSTERS [merge_registry]
+  Price adjustments at quote and checkout. {name: {'quote': '<comm function>', 'order': int}} merged over the empty built-ins, applied by order (discounts 100, shipping 200, tax 300). Each answers {adjustments, errors} for the cart and the client's opaque context (schemas/functions/adjusters.json); total = max(0, subtotal + adjustments). Any error refuses checkout, the quote endpoint shows it; a silent adjuster is error.503.adjuster_unavailable.
+- CHECKOUT_HOOKS [merge_registry]
+  Reservations around checkout. {name: {'reserve', 'commit', 'release': '<comm function>'}}: reserve before the order row is written (refusal or silence refuses the checkout), commit once it is placed, release on a failed checkout, on cancel, and for crashed checkouts by the hook sweep. Idempotent on (attempt_key, name); state kept per hook in CheckoutHookState (schemas/functions/checkout_hooks.*.json).
 - PAYMENT [strategy]
   How an order is paid: a short name from the payment registry (none, mock, plus register_payment_provider names) or a dotted path. The provider starts a payment inside the checkout transaction; the outcome always arrives as payment.completed, which is the only path that marks an order paid.
 - PURCHASABLE_TYPES [merge_registry]
   What can be bought. {type_name: {'resolve': '<comm function>'}} merged over the empty built-ins; None removes a type. The resolver is one keyed batch for every type ({keys} -> {key: {title, price, currency, available, max_quantity, seller_id, image, url}}), so a custom app registers its product type in about twenty lines and orders never imports its model.
-- STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER [presenter]
-  Swap keys (STAPEL_SWAP) for the cart and order response presenters, so a host changes what the API shows without forking a view.
+- STAPEL_ORDERS_CART_PRESENTER / STAPEL_ORDERS_ORDER_PRESENTER / STAPEL_ORDERS_QUOTE_PRESENTER [presenter]
+  Swap keys (STAPEL_SWAP) for the cart, order and cart-quote response presenters, so a host changes what the API shows without forking a view.
 - TOTAL_BASE_CONVERTER [strategy]
   Dotted path (amount, currency, base) -> Decimal | None computing Order.total_base for reporting. Default asks currencies.convert by name; no answer stores NULL, never a guess.
 - orders.order.placed [comm_event]
@@ -60,15 +88,19 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
 - stapel-auth (optional) — the cart is keyed on request.user, and a guest is a stapel-auth anonymous account; user.merged folds a guest's cart into the account on sign-in
 - stapel-core (required) — comm bus (orders.* emits, resolver and status Functions, user.merged and payment.completed consumers), AnchorPagination, GDPR owner protocol, posture stage, AppSettings
 - stapel-currencies (optional) — currencies.convert fills Order.total_base for reporting; without it total_base stays NULL
+- stapel-delivery (optional) — registers a shipping adjuster; reads the delivery choice from the checkout context
+- stapel-inventory (optional) — registers a stock reservation checkout hook (reserve / commit / release)
 - stapel-listings (optional) — answers listings.purchasables, the resolver of the 'listing' purchasable type the stapel-shop preset registers
+- stapel-promotions (optional) — registers a discount adjuster and a redemption checkout hook through its settings fragment
 
-## HTTP operations (10) — call by operationId, never by a typed path
+## HTTP operations (11) — call by operationId, never by a typed path
 Paths are relative to `/orders/api/v1/`.
 ### Orders
 - DELETE /cart/ — orders_cart_clear
 - POST /cart/lines/ — orders_cart_lines_create
 - DELETE /cart/lines/{line_id}/ — orders_cart_lines_destroy
 - PATCH /cart/lines/{line_id}/ — orders_cart_lines_update
+- POST /cart/quote/ — orders_cart_quote
 - GET /cart/ — orders_cart_retrieve
 - POST /checkout/ — orders_checkout_create
 - POST /orders/{order_id}/cancel/ — orders_orders_cancel
@@ -76,12 +108,13 @@ Paths are relative to `/orders/api/v1/`.
 - GET /orders/{order_id}/ — orders_orders_retrieve
 - POST /orders/{order_id}/transition/ — orders_orders_transition
 
-## Error codes (54) — the StapelError envelope
+## Error codes (59) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.bad_request [400] fix_input
 - error.400.captcha_invalid [400] retry
 - error.400.captcha_required [400] retry
 - error.400.cart_empty [400] fix_input
+- error.400.checkout_context_too_large [400] fix_input {max_bytes}
 - error.400.expected_list [400] fix_input
 - error.400.field.blank [400] fix_input {field}
 - error.400.field.does_not_exist [400] fix_input {field}
@@ -118,6 +151,8 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.409.cart_currency_mismatch [409] fix_input
 - error.409.cart_price_changed [409] retry
 - error.409.cart_too_many_lines [409] fix_input {max}
+- error.409.checkout_attempt_conflict [409] fix_input
+- error.409.checkout_hook_refused [409] fix_input
 - error.409.conflict [409] fix_input
 - error.409.order_transition_invalid [409] fix_input {from,to}
 - error.409.purchasable_unavailable [409] fix_input
@@ -130,6 +165,8 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
 - error.429.too_many_requests [429] wait_and_retry
 - error.500.internal [500] contact_support
+- error.503.adjuster_unavailable [503] wait_and_retry
+- error.503.checkout_hook_unavailable [503] wait_and_retry
 - error.503.mandate_unavailable [503] retry
 - error.503.purchasable_unavailable [503] wait_and_retry
 

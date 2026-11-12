@@ -11,8 +11,11 @@
 - **Checkout** turning the cart into an **Order** (`Order`, `OrderLine`),
   idempotent on a client key (`CheckoutAttempt`).
 - An order lifecycle FSM (`fsm.py`) with buyer cancel and staff transitions.
-- API under `/orders/api/v1/` (`cart/`, `cart/lines/`, `checkout/`,
-  `orders/`), facts `orders.order.*`, Functions `orders.*`.
+- API under `/orders/api/v1/` (`cart/`, `cart/lines/`, `cart/quote/`,
+  `checkout/`, `orders/`), facts `orders.order.*`, Functions `orders.*`.
+- **Checkout seams** for commerce companions: `ADJUSTERS` (price
+  adjustments snapshotted as `OrderAdjustment`) and `CHECKOUT_HOOKS`
+  (reserve / commit / release, state in `CheckoutHookState`).
 
 ## Extension points (fork-free)
 
@@ -25,6 +28,10 @@
 | `MAX_LINE_QUANTITY` / `MAX_LINES_PER_CART` | `999` / `100` | Caps; both feed the money proof (E005). |
 | `CART_TTL_DAYS` | `30` | Purge age (beat / `manage.py purge_carts`). |
 | `BASE_CURRENCY` / `TOTAL_BASE_CONVERTER` | `"USD"` / `money.currencies_converter` | REPLACE dotted path for `Order.total_base` (reporting; NULL when unanswered). |
+| `ADJUSTERS` | `{}` | MERGE registry `{name: {"quote": "<function>", "order": 100}}`; `None` removes. See *Checkout seams*. |
+| `CHECKOUT_HOOKS` | `{}` | MERGE registry `{name: {"reserve", "commit", "release": "<function>", "order": 100}}`; `None` removes. |
+| `MAX_ADJUSTMENTS` | `20` | Adjustments per quote across all adjusters; feeds E005. |
+| `CHECKOUT_HOOK_ORPHAN_SECONDS` | `900` | Age after which the hook sweep releases an unfinished checkout's reservations. |
 | `PAYMENT` | `"none"` | Axis. Short name (`none`, `mock`, registered) or dotted path; env may set short names only. |
 | `OWNER_CANCELLABLE_STATUSES` | `("new",)` | Where the buyer may cancel. |
 | `NOTIFY` | `True` | Best-effort `orders.placed` / `orders.status_changed` notifications. |
@@ -45,6 +52,75 @@ The resolver is a comm Function, keyed batch, one contract for every type
 Absent key = unknown (400 on add, 409 at checkout); `available=false` = 409;
 unreachable or malformed = 503. Prices are 2-dp strings below 10^10.
 
+### Checkout seams (`seams.py`, `services/hooks.py`) — SPEC-BRICKS-WAVE §2
+
+Companions never import orders and orders never imports them: each seam is
+a comm Function named in settings. A companion ships the fragment in its
+`preset.SETTINGS_DEFAULTS` (merged two levels deep under the host's own
+`STAPEL_ORDERS`), e.g.:
+
+```python
+SETTINGS_DEFAULTS = {"STAPEL_ORDERS": {
+    "ADJUSTERS": {"promotions": {"quote": "promotions.quote", "order": 100}},
+    "CHECKOUT_HOOKS": {"promotions": {"reserve": "promotions.reserve",
+                                      "commit": "promotions.commit",
+                                      "release": "promotions.release"}},
+}}
+```
+
+Runtime registration (`register_adjuster`, `register_checkout_hook`) is for
+tests and hosts; `reset_seams()` drops it.
+
+**Adjusters** (`schemas/functions/adjusters.json`), ordered by `order`
+(discounts 100, shipping 200, tax 300), ties by name. Payloads, verbatim
+from the spec:
+
+- Request: `{"currency", "subtotal", "user_id" | null, "lines": [{"index", "purchasable_type", "purchasable_key", "quantity", "unit_price", "line_total", "attrs": {}}], "adjustments_so_far": [...], "context": {...}}`
+  — `context` is the opaque dict the client sends on quote and checkout
+  (`codes: [..]`, `delivery: {method, address | pickup_point}`), validated
+  by the adjuster that owns the key, never by orders.
+- Response: `{"adjustments": [{"kind": "discount" | "shipping" | "tax" | "fee", "code", "label", "amount" (signed decimal string, cart currency), "line_index" | null, "meta": {}}], "errors": [{"code", "field" | null, "params": {}}]}`.
+
+Any error refuses the checkout with that code; `POST cart/quote/` returns
+them without failing. Orders re-quotes inside the checkout transaction and
+snapshots `OrderAdjustment` rows; `total = max(0, subtotal + Σ amount)`.
+The readings where the spec was silent (`attrs` = the resolver's extra
+scalar fields; `user_id` null for a guest; `adjustments_so_far` items carry
+`adjuster`; unanswered = `error.503.adjuster_unavailable`; status from the
+error key; `meta` not on the public wire and never personal data) are in
+`docs/CONTRACT-DELTAS.md`.
+
+**Checkout hooks** (`schemas/functions/checkout_hooks.{reserve,commit,release}.json`):
+
+- `reserve` runs before the order row is written, payload = the adjuster
+  request (`adjustments_so_far` = the final list) plus `"attempt_key"` (the
+  checkout idempotency key) → `{"ok", "token", "errors"}`.
+- `commit` `{attempt_key, token | null, order_id, user_id | null}` → `{ok}`,
+  after the order transaction commits (`orders.order.placed`).
+- `release` `{attempt_key, token | null, order_id | null, reason:
+  checkout_failed | cancelled | orphaned}` → `{ok}` — on a failed checkout
+  (reverse order) and on any transition to `cancelled`.
+
+Commit and release answers may carry keys beyond `ok` (`token`, `errors`,
+…); orders reads `ok` only. `ok: true` is final — orders never re-sends that
+call, so a companion that does not know the attempt key may answer `ok: true`
+(logging on its side) to stop the retries. A cancel that arrives before an
+unanswered commit wins: the commit is not retried and `release` (reason
+`cancelled`) is sent; a late commit at the companion is its no-op.
+`orders.order.placed` carries `attempt_key` (since 0.2.0), so a companion can
+find its checkout intent from the fact.
+
+All three are idempotent on `(attempt_key, name)`; a release followed by a
+reserve of the same pair reserves anew (a refused checkout is retried with
+the same key). A hook that is registered but unanswered refuses the
+checkout (fail closed, `error.503.checkout_hook_unavailable`).
+`CheckoutHookState` (`pending → placed → committed`, `releasing →
+released`) is written durably BEFORE reserve; the hook sweep
+(`beat.sweep_checkout_hooks`, `manage.py sweep_checkout_hooks`) retries
+unanswered commits/releases and releases `pending` rows older than
+`CHECKOUT_HOOK_ORPHAN_SECONDS`. Proven under real row locks on PostgreSQL
+by `tests/test_checkout_hooks_pg.py` (`STAPEL_ORDERS_TEST_PG`).
+
 ### Payment providers (`payment.py`)
 
 `register_payment_provider(name, factory)`; a provider's
@@ -56,13 +132,14 @@ unreachable or malformed = 503. Prices are 2-dp strings below 10^10.
 Views inherit `StapelAPIView`; set `request_serializer_class` /
 `response_serializer_class` on a subclass. Presentation swaps via
 `STAPEL_SWAP["STAPEL_ORDERS_CART_PRESENTER"]` /
-`["STAPEL_ORDERS_ORDER_PRESENTER"]`.
+`["STAPEL_ORDERS_ORDER_PRESENTER"]` / `["STAPEL_ORDERS_QUOTE_PRESENTER"]`.
 
 | View | Request | Response |
 |---|---|---|
 | `CartView` (GET, DELETE) | — | `CartResponseSerializer` |
 | `CartLinesView` (POST) | `CartLineAddRequestSerializer` | `CartResponseSerializer` |
 | `CartLineDetailView` (PATCH, DELETE) | `CartLineUpdateRequestSerializer` | `CartResponseSerializer` |
+| `CartQuoteView` (POST) | `CartQuoteRequestSerializer` | `CartQuoteResponseSerializer` |
 | `CheckoutView` (POST) | `CheckoutRequestSerializer` | `OrderResponseSerializer` |
 | `OrderListView` (GET) | — | `OrderPage` envelope of `OrderResponseSerializer` |
 | `OrderDetailView` / `OrderCancelView` | — | `OrderResponseSerializer` |
@@ -78,7 +155,7 @@ the declaration is static, the policy is a setting); the staff transition is
 
 | Kind | Name | Payload | Schema |
 |---|---|---|---|
-| Action (emits) | `orders.order.placed` | `{order_id, user_id, currency, total, placed_at, lines[]}` | `schemas/emits/` |
+| Action (emits) | `orders.order.placed` | `{order_id, user_id, currency, total, placed_at, attempt_key, lines[]}` | `schemas/emits/` |
 | Action (emits) | `orders.order.status_changed` | `{order_id, user_id, from, to, actor, reason?}` | `schemas/emits/` |
 | Action (emits) | `orders.order.paid` | `{order_id, provider_ref}` | `schemas/emits/` |
 | Action (consumes) | `user.merged` | `{from_user_id, into_user_id}` | `schemas/consumes/` |
@@ -88,14 +165,16 @@ the declaration is static, the policy is a setting); the staff transition is
 | Function (provides) | `orders.orders_export` | `{cursor, limit}` → `{rows, cursor, total}` | `schemas/functions/` |
 | Function (provides) | `orders.cart.count` | `{user_id}` → `{line_count}` | `schemas/functions/` |
 | Function (calls) | `<type resolver>` | purchasables contract | `schemas/functions/purchasables.json` |
+| Function (calls) | `<adjuster quote>` | adjusters contract | `schemas/functions/adjusters.json` |
+| Function (calls) | `<hook reserve/commit/release>` | checkout-hooks contracts | `schemas/functions/checkout_hooks.*.json` |
 | Function (calls) | `currencies.convert` | default `TOTAL_BASE_CONVERTER` | stapel-currencies |
 | Signal | `orders:user:<id>` / `orders.cart.changed` | `{line_count}` | no-op without a transport |
 
 ### Reserved, not built
 
-`STOCK_RESERVATION` (decrement is the owner's reaction to
-`orders.order.placed`), taxes/discounts/multi-seller split (`seller_id` is
-captured per line), currencies with exponent ≠ 2.
+Multi-seller split (`seller_id` is captured per line), currencies with
+exponent ≠ 2. Stock, discounts, shipping and tax are companions behind the
+checkout seams, not code here.
 
 ## Contract emission
 
@@ -108,6 +187,11 @@ pinned in `_codegen_settings.enum_name_overrides()`.
 
 - **Never import a sibling module** (`stapel_listings`, `stapel_billing`, …);
   `tests/test_architecture.py` greps the package.
+- **Never import a companion** (`stapel_promotions`, `stapel_delivery`,
+  `stapel_inventory`); they are Functions named in `ADJUSTERS` /
+  `CHECKOUT_HOOKS`. Never validate a `context` key in orders.
+- **Never call a hook or adjuster and continue without its answer**: an
+  unanswered seam refuses (fail closed).
 - **Never read a purchasable on the cart read path** — snapshots exist so a
   sibling's outage cannot break `GET cart/`.
 - **Never convert currency in a cart** or re-round a total.

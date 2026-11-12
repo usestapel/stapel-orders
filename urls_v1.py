@@ -6,6 +6,7 @@ from django.urls import path
 from .views import (
     CartLineDetailView,
     CartLinesView,
+    CartQuoteView,
     CartView,
     CheckoutView,
     OrderCancelView,
@@ -18,6 +19,7 @@ urlpatterns = [
     path("cart/", CartView.as_view(), name="orders-cart"),
     path("cart/lines/", CartLinesView.as_view(), name="orders-cart-lines"),
     path("cart/lines/<int:line_id>/", CartLineDetailView.as_view(), name="orders-cart-line"),
+    path("cart/quote/", CartQuoteView.as_view(), name="orders-cart-quote"),
     path("checkout/", CheckoutView.as_view(), name="orders-checkout"),
     path("orders/", OrderListView.as_view(), name="orders-list"),
     path("orders/<int:order_id>/", OrderDetailView.as_view(), name="orders-detail"),

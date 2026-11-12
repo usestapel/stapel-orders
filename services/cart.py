@@ -66,6 +66,7 @@ def _snapshot(line: CartLine, item: registry.Resolved) -> None:
     line.image = item.image
     line.url = item.url
     line.seller_id = item.seller_id
+    line.attrs = item.attrs
     line.line_total = money.line_total(item.price, line.quantity)
 
 

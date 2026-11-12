@@ -6,7 +6,7 @@ the FSM and announced on the bus.
 """
 from django.contrib import admin, messages
 
-from .models import Cart, CartLine, Order, OrderLine, OrderStatus
+from .models import Cart, CartLine, Order, OrderAdjustment, OrderLine, OrderStatus
 
 
 class OrderLineInline(admin.TabularInline):
@@ -15,6 +15,17 @@ class OrderLineInline(admin.TabularInline):
     can_delete = False
     fields = ("purchasable_type", "purchasable_key", "title", "quantity",
               "unit_price", "line_total", "seller_id")
+    readonly_fields = fields
+
+    def has_add_permission(self, request, obj=None):
+        return False
+
+
+class OrderAdjustmentInline(admin.TabularInline):
+    model = OrderAdjustment
+    extra = 0
+    can_delete = False
+    fields = ("position", "adjuster", "kind", "code", "label", "amount", "line_index")
     readonly_fields = fields
 
     def has_add_permission(self, request, obj=None):
@@ -50,7 +61,7 @@ class OrderAdmin(admin.ModelAdmin):
     list_display = ("number", "status", "payment_status", "total", "currency", "created_at")
     list_filter = ("status", "payment_status", "currency")
     search_fields = ("number", "user_id")
-    inlines = [OrderLineInline]
+    inlines = [OrderLineInline, OrderAdjustmentInline]
     readonly_fields = (
         "number", "user_id", "status", "payment_status", "currency", "subtotal",
         "total", "total_base", "base_currency", "provider_ref", "contact_name",

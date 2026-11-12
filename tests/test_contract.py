@@ -31,6 +31,8 @@ STABLE_COMPONENTS = {
     "CheckoutRequest", "ContactSnapshot", "AddressSnapshot",
     "OrderResponse", "OrderLine", "OrderPage", "OrderTransitionRequest",
     "OrderStatusEnum", "PaymentStatusEnum",
+    # 0.2.0 checkout seams (additive).
+    "Adjustment", "AdjustmentKindEnum", "QuoteError", "CartQuoteRequest", "CartQuoteResponse",
 }
 
 

@@ -10,6 +10,10 @@ registers what can be bought in ``PURCHASABLE_TYPES`` (merge-over-builtins,
 keyed batch of purchasable keys to title/price/availability. Orders never
 imports a sibling model.
 
+``ADJUSTERS`` and ``CHECKOUT_HOOKS`` are the checkout seams commerce
+companions plug into (promotions, delivery, inventory): merge registries of
+comm Function names, empty by default (``adjusters.py``, ``hooks.py``).
+
 ``PAYMENT`` is a short name from the payment registry (``none``, ``mock``,
 plus whatever a deployment registers) or a dotted path to a provider. The
 environment may choose among the short names only (``env_enum``).
@@ -29,6 +33,19 @@ DEFAULTS = {
     # tests/test_money_bounds.py, check E005).
     "MAX_LINE_QUANTITY": 999,
     "MAX_LINES_PER_CART": 100,
+    # Checkout seams, merge registries ({name: entry | None}, None removes).
+    # {name: {"quote": "<function>", "order": 100}} — price adjustments
+    # (discount 100, shipping 200, tax 300), schemas/functions/adjusters.json.
+    "ADJUSTERS": {},
+    # {name: {"reserve", "commit", "release": "<function>", "order": 100}} —
+    # reservations taken before the order is written (schemas/functions/
+    # checkout_hooks.*.json).
+    "CHECKOUT_HOOKS": {},
+    # Adjustments one quote may carry across all adjusters; feeds E005.
+    "MAX_ADJUSTMENTS": 20,
+    # A reserve whose checkout never finished is released by the hook sweep
+    # (beat / manage.py sweep_checkout_hooks) after this many seconds.
+    "CHECKOUT_HOOK_ORPHAN_SECONDS": 900,
     # Carts untouched for this many days are purged by the beat entry.
     "CART_TTL_DAYS": 30,
     # Reporting currency of Order.total_base and the converter computing it

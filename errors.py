@@ -8,6 +8,7 @@ from stapel_core.django.api.errors import register_service_errors
 ERR_400_PURCHASABLE_TYPE_UNKNOWN = "error.400.purchasable_type_unknown"
 ERR_400_PURCHASABLE_UNKNOWN = "error.400.purchasable_unknown"
 ERR_400_CART_EMPTY = "error.400.cart_empty"
+ERR_400_CHECKOUT_CONTEXT_TOO_LARGE = "error.400.checkout_context_too_large"
 ERR_403_CHECKOUT_REQUIRES_ACCOUNT = "error.403.checkout_requires_account"
 ERR_404_CART_LINE_NOT_FOUND = "error.404.cart_line_not_found"
 ERR_404_ORDER_NOT_FOUND = "error.404.order_not_found"
@@ -16,12 +17,17 @@ ERR_409_CART_CURRENCY_MISMATCH = "error.409.cart_currency_mismatch"
 ERR_409_CART_PRICE_CHANGED = "error.409.cart_price_changed"
 ERR_409_CART_TOO_MANY_LINES = "error.409.cart_too_many_lines"
 ERR_409_ORDER_TRANSITION_INVALID = "error.409.order_transition_invalid"
+ERR_409_CHECKOUT_HOOK_REFUSED = "error.409.checkout_hook_refused"
+ERR_409_CHECKOUT_ATTEMPT_CONFLICT = "error.409.checkout_attempt_conflict"
 ERR_503_PURCHASABLE_UNAVAILABLE = "error.503.purchasable_unavailable"
+ERR_503_ADJUSTER_UNAVAILABLE = "error.503.adjuster_unavailable"
+ERR_503_CHECKOUT_HOOK_UNAVAILABLE = "error.503.checkout_hook_unavailable"
 
 STAPEL_ORDERS_ERRORS = {
     ERR_400_PURCHASABLE_TYPE_UNKNOWN: "Unknown purchasable type",
     ERR_400_PURCHASABLE_UNKNOWN: "This item is not available for purchase",
     ERR_400_CART_EMPTY: "The cart is empty",
+    ERR_400_CHECKOUT_CONTEXT_TOO_LARGE: "The checkout details are larger than {max_bytes} bytes",
     ERR_403_CHECKOUT_REQUIRES_ACCOUNT: "Sign in to place an order",
     ERR_404_CART_LINE_NOT_FOUND: "Cart line not found",
     ERR_404_ORDER_NOT_FOUND: "Order not found",
@@ -30,7 +36,11 @@ STAPEL_ORDERS_ERRORS = {
     ERR_409_CART_PRICE_CHANGED: "Prices in your cart have changed; review the cart and submit again",
     ERR_409_CART_TOO_MANY_LINES: "The cart holds at most {max} different items",
     ERR_409_ORDER_TRANSITION_INVALID: "The order cannot move from {from} to {to}",
+    ERR_409_CHECKOUT_HOOK_REFUSED: "The order cannot be placed right now; review the cart and submit again",
+    ERR_409_CHECKOUT_ATTEMPT_CONFLICT: "This checkout key is already in use; start checkout again",
     ERR_503_PURCHASABLE_UNAVAILABLE: "Item details are temporarily unavailable; try again shortly",
+    ERR_503_ADJUSTER_UNAVAILABLE: "Prices for this order cannot be calculated right now; try again shortly",
+    ERR_503_CHECKOUT_HOOK_UNAVAILABLE: "The order cannot be placed right now; try again shortly",
 }
 
 #: Explicit remediation where the status heuristic would mislead.
@@ -38,6 +48,8 @@ STAPEL_ORDERS_REMEDIATION = {
     ERR_403_CHECKOUT_REQUIRES_ACCOUNT: "reauthenticate",
     ERR_409_CART_PRICE_CHANGED: "retry",
     ERR_503_PURCHASABLE_UNAVAILABLE: "wait_and_retry",
+    ERR_503_ADJUSTER_UNAVAILABLE: "wait_and_retry",
+    ERR_503_CHECKOUT_HOOK_UNAVAILABLE: "wait_and_retry",
 }
 
 register_service_errors(STAPEL_ORDERS_ERRORS, remediation=STAPEL_ORDERS_REMEDIATION)
@@ -47,6 +59,7 @@ __all__ = [
     "ERR_400_PURCHASABLE_TYPE_UNKNOWN",
     "ERR_400_PURCHASABLE_UNKNOWN",
     "ERR_400_CART_EMPTY",
+    "ERR_400_CHECKOUT_CONTEXT_TOO_LARGE",
     "ERR_403_CHECKOUT_REQUIRES_ACCOUNT",
     "ERR_404_CART_LINE_NOT_FOUND",
     "ERR_404_ORDER_NOT_FOUND",
@@ -55,5 +68,9 @@ __all__ = [
     "ERR_409_CART_PRICE_CHANGED",
     "ERR_409_CART_TOO_MANY_LINES",
     "ERR_409_ORDER_TRANSITION_INVALID",
+    "ERR_409_CHECKOUT_HOOK_REFUSED",
+    "ERR_409_CHECKOUT_ATTEMPT_CONFLICT",
     "ERR_503_PURCHASABLE_UNAVAILABLE",
+    "ERR_503_ADJUSTER_UNAVAILABLE",
+    "ERR_503_CHECKOUT_HOOK_UNAVAILABLE",
 ]

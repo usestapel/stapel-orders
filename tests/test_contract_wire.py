@@ -109,6 +109,29 @@ def r_line_delete(env):
     return [env.client.delete(_url(V1 + "/cart/lines/{line_id}/", line_id=line_id))], []
 
 
+def r_cart_quote(env):
+    """Populated: a discount, a shipping line and an error, from the fakes."""
+    from .fake_seams import FakeAdjuster, discount_by_code, flat_shipping
+
+    empty = env.client.post(V1 + "/cart/quote/", {}, format="json")
+    _filled_cart(env.client, env.catalog)
+    fakes = [
+        FakeAdjuster("promo", discount_by_code("SAVE10", 10), order=100).install(),
+        FakeAdjuster("ship", flat_shipping("5.00"), order=200).install(),
+    ]
+    try:
+        priced = env.client.post(V1 + "/cart/quote/", {"context": {
+            "codes": ["save10"], "delivery": {"method": "courier"},
+        }}, format="json")
+        refused = env.client.post(V1 + "/cart/quote/", {"context": {"codes": ["nope"]}},
+                                  format="json")
+    finally:
+        for fake in fakes:
+            fake.uninstall()
+    assert priced.json()["adjustments"] and refused.json()["errors"]
+    return [priced, refused], [empty]
+
+
 def r_checkout(code):
     def recipe(env):
         _filled_cart(env.client, env.catalog)
@@ -150,6 +173,7 @@ RECIPES = {
     ("POST", V1 + "/cart/lines/", 200): r_lines_post,
     ("PATCH", V1 + "/cart/lines/{line_id}/", 200): r_line_patch,
     ("DELETE", V1 + "/cart/lines/{line_id}/", 200): r_line_delete,
+    ("POST", V1 + "/cart/quote/", 200): r_cart_quote,
     ("POST", V1 + "/checkout/", 201): r_checkout(201),
     ("POST", V1 + "/checkout/", 200): r_checkout(200),
     ("GET", V1 + "/orders/", 200): r_orders_list,

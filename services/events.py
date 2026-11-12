@@ -7,6 +7,7 @@ signals are best-effort and leave only after commit.
 from __future__ import annotations
 
 import logging
+import uuid
 
 from django.db import transaction
 
@@ -23,8 +24,8 @@ NOTIFY_PLACED = "orders.placed"
 NOTIFY_STATUS_CHANGED = "orders.status_changed"
 
 
-def placed_payload(order, lines) -> dict:
-    return {
+def placed_payload(order, lines, attempt_key=None) -> dict:
+    payload = {
         "order_id": str(order.pk),
         "user_id": order.user_id,
         "currency": order.currency,
@@ -41,6 +42,9 @@ def placed_payload(order, lines) -> dict:
             for line in lines
         ],
     }
+    if attempt_key is not None:
+        payload["attempt_key"] = str(uuid.UUID(str(attempt_key)))
+    return payload
 
 
 def status_changed_payload(order, from_status: str, actor: str, reason: str = "") -> dict:

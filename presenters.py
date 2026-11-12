@@ -6,6 +6,7 @@ a host can swap the presentation via ``STAPEL_SWAP`` without forking.
 """
 from __future__ import annotations
 
+from dataclasses import fields
 from decimal import Decimal
 
 from stapel_core.django.swappable import declare_swap, get_presenter
@@ -13,20 +14,26 @@ from stapel_core.django.swappable import declare_swap, get_presenter
 from . import money
 from .dto import (
     AddressDTO,
+    AdjustmentDTO,
     CartDTO,
     CartLineDTO,
+    CartQuoteDTO,
     ContactDTO,
     OrderDTO,
     OrderLineDTO,
+    QuoteErrorDTO,
 )
 
 CART_PRESENTER_KEY = "STAPEL_ORDERS_CART_PRESENTER"
 ORDER_PRESENTER_KEY = "STAPEL_ORDERS_ORDER_PRESENTER"
+QUOTE_PRESENTER_KEY = "STAPEL_ORDERS_QUOTE_PRESENTER"
 DEFAULT_CART_PRESENTER = "stapel_orders.presenters.CartPresenter"
 DEFAULT_ORDER_PRESENTER = "stapel_orders.presenters.OrderPresenter"
+DEFAULT_QUOTE_PRESENTER = "stapel_orders.presenters.QuotePresenter"
 
 declare_swap(CART_PRESENTER_KEY, DEFAULT_CART_PRESENTER)
 declare_swap(ORDER_PRESENTER_KEY, DEFAULT_ORDER_PRESENTER)
+declare_swap(QUOTE_PRESENTER_KEY, DEFAULT_QUOTE_PRESENTER)
 
 
 def _or_none(value: str) -> str | None:
@@ -65,6 +72,29 @@ class CartPresenter:
             subtotal=subtotal,
             total=subtotal,
             updated_at=cart.updated_at,
+        )
+
+
+class QuotePresenter:
+    """(cart, seams.Quote) -> CartQuoteDTO: the cart DTO plus adjustments."""
+
+    def present(self, cart, quote) -> CartQuoteDTO:
+        base = get_cart_presenter()().present(cart)
+        data = {f.name: getattr(base, f.name) for f in fields(CartDTO)}
+        data["total"] = quote.total if base.lines else base.total
+        return CartQuoteDTO(
+            **data,
+            adjustments=[
+                AdjustmentDTO(
+                    kind=a.kind, code=a.code, label=a.label,
+                    amount=a.amount, line_index=a.line_index,
+                )
+                for a in quote.adjustments
+            ],
+            errors=[
+                QuoteErrorDTO(code=e.code, field=e.field, params=dict(e.params))
+                for e in quote.errors
+            ],
         )
 
 
@@ -116,6 +146,13 @@ class OrderPresenter:
             created_at=order.created_at,
             updated_at=order.updated_at,
             cancellable=allowed(order.status, OrderStatus.CANCELLED, OWNER),
+            adjustments=[
+                AdjustmentDTO(
+                    kind=a.kind, code=a.code, label=a.label,
+                    amount=a.amount, line_index=a.line_index,
+                )
+                for a in order.adjustments.all()
+            ],
         )
 
 
@@ -127,11 +164,18 @@ def get_order_presenter() -> type:
     return get_presenter(ORDER_PRESENTER_KEY, default=DEFAULT_ORDER_PRESENTER)
 
 
+def get_quote_presenter() -> type:
+    return get_presenter(QUOTE_PRESENTER_KEY, default=DEFAULT_QUOTE_PRESENTER)
+
+
 __all__ = [
     "CART_PRESENTER_KEY",
     "ORDER_PRESENTER_KEY",
+    "QUOTE_PRESENTER_KEY",
     "CartPresenter",
     "OrderPresenter",
+    "QuotePresenter",
     "get_cart_presenter",
     "get_order_presenter",
+    "get_quote_presenter",
 ]

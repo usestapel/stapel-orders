@@ -24,7 +24,7 @@ STAPEL_ORDERS = {
 # urls.py
 path("orders/api/", include("stapel_orders.urls"))   # -> /orders/api/v1/...
 
-# settings.py — the abandoned-cart purge (Celery optional)
+# settings.py — the abandoned-cart purge and the checkout-hook sweep (Celery optional)
 from stapel_orders.beat import get_orders_beat_schedule
 CELERY_BEAT_SCHEDULE = {**get_orders_beat_schedule()}
 ```
@@ -61,6 +61,16 @@ register_purchasable_type("part", {"resolve": "parts.purchasables"})
   cart and refuses with it in `params.cart`, so the shopper is never charged
   a number they did not see. Guests are asked to sign in unless
   `CHECKOUT_REQUIRES_ACCOUNT` is off.
+- **Checkout seams** — commerce companions plug in by settings, never by
+  import. `ADJUSTERS` (discounts, shipping, tax) price the cart; `POST
+  cart/quote/` shows their lines and errors with the client's opaque
+  `context` (promo codes, delivery choice), and checkout re-quotes, refuses
+  on any error and snapshots the adjustments: `total = max(0, subtotal +
+  adjustments)`. `CHECKOUT_HOOKS` (stock, redemptions) reserve before the
+  order is written, commit once it is placed, release on failure or cancel;
+  a crashed checkout is released by the hook sweep. Both registries ship
+  empty, and a silent companion refuses the checkout instead of being
+  skipped.
 - **Order** — `new → confirmed → shipped → completed`, cancel from `new` by
   the buyer (`OWNER_CANCELLABLE_STATUSES`), staff for the rest, `needs_review`
   when a payment does not match. History is anchor-paginated.

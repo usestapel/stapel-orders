@@ -36,6 +36,10 @@ COUNTRY_MAX_LENGTH = 2
 SHIPPING_METHOD_MAX_LENGTH = 32
 COMMENT_MAX_LENGTH = 500
 PROVIDER_REF_MAX_LENGTH = 128
+SEAM_NAME_MAX_LENGTH = 64
+ADJUSTMENT_CODE_MAX_LENGTH = 64
+HOOK_TOKEN_MAX_LENGTH = 255
+HOOK_ERROR_MAX_LENGTH = 255
 
 
 def _price_field(**kwargs):
@@ -69,6 +73,24 @@ class OrderStatus(models.TextChoices):
     COMPLETED = "completed", "Completed"
     CANCELLED = "cancelled", "Cancelled"
     NEEDS_REVIEW = "needs_review", "Needs review"
+
+
+class AdjustmentKind(models.TextChoices):
+    DISCOUNT = "discount", "Discount"
+    SHIPPING = "shipping", "Shipping"
+    TAX = "tax", "Tax"
+    FEE = "fee", "Fee"
+
+
+class HookState(models.TextChoices):
+    #: Durable before reserve is called; no order yet. Old ones are orphans.
+    PENDING = "pending", "Pending"
+    #: Written with the order in the checkout transaction; commit not yet answered.
+    PLACED = "placed", "Placed"
+    COMMITTED = "committed", "Committed"
+    #: Written with the cancel; release not yet answered.
+    RELEASING = "releasing", "Releasing"
+    RELEASED = "released", "Released"
 
 
 class PaymentStatus(models.TextChoices):
@@ -140,6 +162,10 @@ class CartLine(models.Model):
     seller_id = models.CharField(
         max_length=SELLER_ID_MAX_LENGTH, blank=True, default="",
         help_text="Snapshot seller id from the resolver, empty when none.",
+    )
+    attrs = models.JSONField(
+        default=dict, blank=True,
+        help_text="Resolver fields beyond the contract (scalars), handed to adjusters and hooks.",
     )
     created_at = models.DateTimeField(auto_now_add=True, help_text="When the line was added.")
     updated_at = models.DateTimeField(
@@ -318,3 +344,112 @@ class CheckoutAttempt(models.Model):
                 name="orders_checkout_one_order_per_key",
             ),
         ]
+
+
+@access.standard
+class OrderAdjustment(models.Model):
+    """One adjuster answer frozen at checkout (discount, shipping, tax, fee)."""
+
+    order = models.ForeignKey(
+        Order, on_delete=models.CASCADE, related_name="adjustments",
+        help_text="The order this adjustment belongs to.",
+    )
+    position = models.PositiveIntegerField(help_text="Order of application (adjuster order).")
+    adjuster = models.CharField(
+        max_length=SEAM_NAME_MAX_LENGTH,
+        help_text="ADJUSTERS name that answered it.",
+    )
+    kind = models.CharField(
+        max_length=16, choices=AdjustmentKind.choices,
+        help_text="discount, shipping, tax or fee.",
+    )
+    code = models.CharField(
+        max_length=ADJUSTMENT_CODE_MAX_LENGTH, blank=True, default="",
+        help_text="The adjuster's code (promo code, delivery method), empty when none.",
+    )
+    label = models.CharField(
+        max_length=TITLE_MAX_LENGTH, blank=True, default="",
+        help_text="Human label as the adjuster answered it.",
+    )
+    amount = models.DecimalField(
+        max_digits=money.ADJUSTMENT_MAX_DIGITS,
+        decimal_places=money.DECIMAL_PLACES,
+        help_text="Signed amount in the order currency (negative lowers the total).",
+    )
+    line_index = models.PositiveIntegerField(
+        null=True, blank=True,
+        help_text="Position of the order line it applies to; NULL for the whole order.",
+    )
+    meta = models.JSONField(
+        default=dict, blank=True,
+        help_text="Adjuster's opaque details; never personal data (kept after erasure).",
+    )
+
+    class Meta:
+        app_label = "orders"
+        ordering = ["position", "id"]
+
+    def __str__(self) -> str:
+        return f"{self.kind} {self.amount} ({self.adjuster})"
+
+
+@access.ops
+class CheckoutHookState(models.Model):
+    """One CHECKOUT_HOOKS reservation per (attempt key, hook name).
+
+    Written durably before ``reserve`` is called, so a checkout that dies
+    mid-way leaves a row the hook sweep can release.
+    """
+
+    attempt_key = models.UUIDField(help_text="The checkout idempotency key.")
+    name = models.CharField(
+        max_length=SEAM_NAME_MAX_LENGTH,
+        help_text="CHECKOUT_HOOKS name.",
+    )
+    user_id = models.CharField(
+        max_length=USER_ID_MAX_LENGTH, db_index=True,
+        help_text="str(user.pk) that submitted the key.",
+    )
+    state = models.CharField(
+        max_length=16, choices=HookState.choices, default=HookState.PENDING,
+        help_text="pending -> placed -> committed; releasing -> released.",
+    )
+    token = models.CharField(
+        max_length=HOOK_TOKEN_MAX_LENGTH, blank=True, default="",
+        help_text="Token reserve answered; empty when none.",
+    )
+    order = models.ForeignKey(
+        Order, on_delete=models.SET_NULL, null=True, blank=True,
+        related_name="hook_states",
+        help_text="The order the reservation was committed for.",
+    )
+    release_reason = models.CharField(
+        max_length=32, blank=True, default="",
+        help_text="Why release was asked: checkout_failed, cancelled, orphaned.",
+    )
+    tries = models.PositiveIntegerField(
+        default=0, help_text="Unanswered commit/release calls so far.",
+    )
+    last_error = models.CharField(
+        max_length=HOOK_ERROR_MAX_LENGTH, blank=True, default="",
+        help_text="Last failure of a commit/release call.",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, help_text="When the row was written.")
+    updated_at = models.DateTimeField(
+        auto_now=True, db_index=True,
+        help_text="Last change; a pending row older than the orphan age is released.",
+    )
+
+    class Meta:
+        app_label = "orders"
+        ordering = ["id"]
+        constraints = [
+            models.UniqueConstraint(
+                fields=["attempt_key", "name"],
+                name="orders_hookstate_one_per_attempt_hook",
+            ),
+        ]
+        indexes = [models.Index(fields=["state", "updated_at"], name="orders_hookstate_sweep")]
+
+    def __str__(self) -> str:
+        return f"{self.name}@{self.attempt_key} ({self.state})"

@@ -190,6 +190,51 @@
         }
       }
     },
+    "/orders/api/v1/cart/quote/": {
+      "post": {
+        "operationId": "orders_cart_quote",
+        "description": "Price the cart through the ADJUSTERS with the client's ``context``.\n\nNever fails on an adjuster's refusal: errors come back in ``errors`` (the\nsame ones checkout would refuse with). Asks no purchasable resolver.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartQuoteResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        }
+      }
+    },
     "/orders/api/v1/checkout/": {
       "post": {
         "operationId": "orders_checkout_create",
@@ -492,6 +537,49 @@
           "line1"
         ]
       },
+      "Adjustment": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKindEnum"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "amount": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "line_index": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        "required": [
+          "amount",
+          "code",
+          "kind",
+          "label",
+          "line_index"
+        ]
+      },
+      "AdjustmentKindEnum": {
+        "enum": [
+          "discount",
+          "shipping",
+          "tax",
+          "fee"
+        ],
+        "type": "string",
+        "description": "* `discount` - Discount\n* `shipping` - Shipping\n* `tax` - Tax\n* `fee` - Fee"
+      },
       "CartLine": {
         "type": "object",
         "properties": {
@@ -581,6 +669,78 @@
           "purchasable_type"
         ]
       },
+      "CartQuoteRequest": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Opaque object for the adjusters and hooks (e.g. codes, delivery); each key is validated by the adjuster that owns it, never by orders."
+          }
+        }
+      },
+      "CartQuoteResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 3
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            }
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Adjustment"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteError"
+            }
+          }
+        },
+        "required": [
+          "adjustments",
+          "currency",
+          "errors",
+          "id",
+          "line_count",
+          "lines",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
       "CartResponse": {
         "type": "object",
         "properties": {
@@ -651,6 +811,11 @@
             "type": "string",
             "default": "",
             "maxLength": 500
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Opaque object for the adjusters and hooks (e.g. codes, delivery); each key is validated by the adjuster that owns it, never by orders."
           }
         },
         "required": [
@@ -815,6 +980,12 @@
               "$ref": "#/components/schemas/OrderLine"
             }
           },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Adjustment"
+            }
+          },
           "contact": {
             "$ref": "#/components/schemas/ContactSnapshot"
           },
@@ -842,6 +1013,7 @@
           }
         },
         "required": [
+          "adjustments",
           "cancellable",
           "comment",
           "contact",
@@ -906,6 +1078,29 @@
         ],
         "type": "string",
         "description": "* `unpaid` - Unpaid\n* `pending` - Pending\n* `paid` - Paid\n* `refunded` - Refunded"
+      },
+      "QuoteError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "field": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 128
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "code",
+          "field",
+          "params"
+        ]
       }
     },
     "securitySchemes": {
