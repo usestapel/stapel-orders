@@ -244,11 +244,15 @@ def _token(row: CheckoutHookState, tokens: dict | None = None):
 
 
 def _commit(row: CheckoutHookState) -> bool:
+    from .events import fact_user_id
+
+    actor_id = row.order.user_id if row.order_id else row.user_id
     payload = {
         "attempt_key": str(row.attempt_key),
         "token": _token(row),
         "order_id": str(row.order_id),
-        "user_id": row.order.user_id if row.order_id else None,
+        "user_id": fact_user_id(actor_id),
+        "actor_id": str(actor_id),
     }
     if not _call(row, "commit", payload):
         return False
@@ -258,11 +262,15 @@ def _commit(row: CheckoutHookState) -> bool:
 
 def _release(row: CheckoutHookState, reason: str, tokens: dict | None = None) -> bool:
     """Call ``release`` for a row already claimed ``releasing``."""
+    from .events import fact_user_id
+
     payload = {
         "attempt_key": str(row.attempt_key),
         "token": _token(row, tokens),
         "order_id": str(row.order_id) if row.order_id else None,
         "reason": reason,
+        "user_id": fact_user_id(row.user_id),
+        "actor_id": str(row.user_id),
     }
     if not _call(row, "release", payload):
         return False

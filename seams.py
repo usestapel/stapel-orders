@@ -247,14 +247,17 @@ def is_guest(user) -> bool:
     return not IsNotAnonymousUser().has_permission(SimpleNamespace(user=user), None)
 
 
-def build_request(*, currency: str, user_id: Optional[str], lines, context: dict) -> dict:
+def build_request(*, currency: str, user_id: Optional[str], lines, context: dict,
+                  actor_id: Optional[str] = None) -> dict:
     """The adjuster request (without ``adjustments_so_far``) for cart *lines*.
 
-    ``line_index`` everywhere is the position in this ``lines`` list, which
-    is the order of the order lines checkout writes.
+    ``user_id`` is null for a guest; ``actor_id`` is the acting account id,
+    guest or not (omitted only when a caller has none). ``line_index``
+    everywhere is the position in this ``lines`` list, which is the order of
+    the order lines checkout writes.
     """
     subtotal = money.sum_lines(line.line_total for line in lines)
-    return {
+    request = {
         "currency": currency,
         "subtotal": money.to_wire(subtotal),
         "user_id": user_id,
@@ -272,6 +275,9 @@ def build_request(*, currency: str, user_id: Optional[str], lines, context: dict
         ],
         "context": context,
     }
+    if actor_id is not None:
+        request["actor_id"] = actor_id
+    return request
 
 
 def _parse_adjustment(name: str, raw, line_count: int) -> Adjustment:

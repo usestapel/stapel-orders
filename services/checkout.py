@@ -198,6 +198,7 @@ def quote_lines(user, currency: str, lines, context: dict) -> seams.Quote:
         return seams.Quote(currency=currency or "", subtotal=money.ZERO)
     request = seams.build_request(
         currency=currency, user_id=seam_user_id(user), lines=lines, context=context,
+        actor_id=str(user.pk),
     )
     return seams.quote(request)
 
@@ -371,6 +372,7 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address | None
                 if hook_names:
                     request = seams.build_request(
                         currency=cart.currency, user_id=seam_user_id(user),
+                        actor_id=user_id,
                         lines=lines, context=context,
                     )
                     request["adjustments_so_far"] = [a.to_wire() for a in quote.adjustments]

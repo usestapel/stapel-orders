@@ -145,6 +145,20 @@ the machine form.
     of kind `shipping` (non-personal, ≤ 32 chars); without one, the client's
     `shipping_method` stays.
 
+## Actor and user (D5, decided 2026-11-12)
+
+29. Every adjuster and checkout-hook payload — quote request, `reserve`,
+    `commit`, `release` — carries `actor_id` (the acting account id, guest or
+    real, always present) next to `user_id`, which is **null for a guest on
+    all of them** (items 3 and 12 now agree: `commit` no longer sends the
+    guest's id; `release` gains both keys). `orders.order.placed` carries
+    `actor_id` as well; its `user_id` stays the stored account id (a
+    guest's included), because nulling it would break released consumers.
+    The new properties are optional in `schemas/functions/*.json` and the
+    placed schema. Those request schemas say `additionalProperties: false`:
+    a companion that validates orders' payloads against an older copy of
+    them must take the new files (and should not ship a copy at all).
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

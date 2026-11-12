@@ -33,6 +33,7 @@ def placed_payload(order, lines, attempt_key=None) -> dict:
     payload = {
         "order_id": str(order.pk),
         "user_id": order.user_id,
+        "actor_id": order.user_id,
         "currency": order.currency,
         "total": to_wire(order.total),
         "placed_at": order.created_at.isoformat(),
@@ -53,10 +54,10 @@ def placed_payload(order, lines, attempt_key=None) -> dict:
 
 
 def fact_user_id(user_id) -> str | None:
-    """``user_id`` on a payment fact: null when it names a guest account.
+    """``user_id`` on a seam payload or payment fact: null for a guest account.
 
-    A guest id addresses nobody (no receipt, no account page), so the facts
-    that may reach a payer carry null for it, like the seam payloads do. An
+    A guest id addresses nobody (no receipt, no account page), so these
+    payloads carry null for it and name the account in ``actor_id``. An
     id that no longer resolves (erased, another service's user table) is
     passed through as stored.
     """

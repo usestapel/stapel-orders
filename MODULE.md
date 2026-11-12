@@ -75,7 +75,7 @@ tests and hosts; `reset_seams()` drops it.
 (discounts 100, shipping 200, tax 300), ties by name. Payloads, verbatim
 from the spec:
 
-- Request: `{"currency", "subtotal", "user_id" | null, "lines": [{"index", "purchasable_type", "purchasable_key", "quantity", "unit_price", "line_total", "attrs": {}}], "adjustments_so_far": [...], "context": {...}}`
+- Request: `{"currency", "subtotal", "user_id" | null, "actor_id", "lines": [{"index", "purchasable_type", "purchasable_key", "quantity", "unit_price", "line_total", "attrs": {}}], "adjustments_so_far": [...], "context": {...}}`
   — `context` is the opaque dict the client sends on quote and checkout
   (`codes: [..]`, `delivery: {method, address | pickup_point}`), validated
   by the adjuster that owns the key, never by orders.
@@ -107,11 +107,17 @@ error key; `meta` not on the public wire and never personal data) are in
 - `reserve` runs before the order row is written, payload = the adjuster
   request (`adjustments_so_far` = the final list) plus `"attempt_key"` (the
   checkout idempotency key) → `{"ok", "token", "errors"}`.
-- `commit` `{attempt_key, token | null, order_id, user_id | null}` → `{ok}`,
+- `commit` `{attempt_key, token | null, order_id, user_id | null, actor_id}` → `{ok}`,
   after the order transaction commits (`orders.order.placed`).
 - `release` `{attempt_key, token | null, order_id | null, reason:
-  checkout_failed | cancelled | orphaned}` → `{ok}` — on a failed checkout
-  (reverse order) and on any transition to `cancelled`.
+  checkout_failed | cancelled | orphaned, user_id | null, actor_id}` → `{ok}`
+  — on a failed checkout (reverse order) and on any transition to
+  `cancelled`.
+
+On every adjuster and hook payload `user_id` is null for a guest account and
+`actor_id` is the acting account id (guest or not, always sent);
+`orders.order.placed` carries `actor_id` too (its `user_id` stays the stored
+account id, a guest's included).
 
 Commit and release answers may carry keys beyond `ok` (`token`, `errors`,
 …); orders reads `ok` only. `ok: true` is final — orders never re-sends that
@@ -187,7 +193,7 @@ the declaration is static, the policy is a setting); the staff transition is
 
 | Kind | Name | Payload | Schema |
 |---|---|---|---|
-| Action (emits) | `orders.order.placed` | `{order_id, user_id, currency, total, placed_at, attempt_key, lines[]}` | `schemas/emits/` |
+| Action (emits) | `orders.order.placed` | `{order_id, user_id, actor_id, currency, total, placed_at, attempt_key, lines[]}` | `schemas/emits/` |
 | Action (emits) | `orders.order.status_changed` | `{order_id, user_id, from, to, actor, reason?}` | `schemas/emits/` |
 | Action (emits) | `orders.order.paid` | `{order_id, provider_ref}` | `schemas/emits/` |
 | Action (emits) | `orders.payment.completed` | `{reference_type: "order", reference_key, amount, currency, provider_ref, user_id \| null, simulated}` | `schemas/emits/` |

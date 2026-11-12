@@ -63,6 +63,13 @@ additive fields.
   the payment consumer reads it and billing's `payment.completed` alike.
 
 ### Changed
+- **`actor_id` on every seam payload; `user_id` null for a guest on all of
+  them.** Adjuster requests, `reserve`, `commit`, `release` and
+  `orders.order.placed` carry `actor_id` (the acting account id, guest or
+  not). `user_id` is null for a guest on quote, reserve, commit and release
+  (commit used to send the guest's id; release gains `user_id`).
+  `orders.order.placed.user_id` keeps the stored account id. The new
+  properties are optional in the schemas.
 - **The delivery companion owns the address when the checkout `context`
   carries a `delivery` key**: `shipping_address` is then not required, not
   validated, not compared and not stored, and `OrderResponse.shipping_address`

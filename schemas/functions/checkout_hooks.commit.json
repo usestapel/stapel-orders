@@ -24,6 +24,11 @@
         "null"
       ],
       "maxLength": 64
+    },
+    "actor_id": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "The acting account id, guest or not; always sent since 0.2.0 (user_id is null for a guest)."
     }
   },
   "required": [

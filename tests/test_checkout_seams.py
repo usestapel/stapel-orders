@@ -257,6 +257,38 @@ class TestAdjusters:
         client.post(QUOTE, {}, format="json")
         assert promo.calls[-1]["user_id"] is None
 
+    @pytest.mark.parametrize("who", ["guest", "user"])
+    def test_every_seam_payload_carries_actor_and_user(
+        self, who, request, client_for, catalog, installed, settings, captured_events,
+        django_capture_on_commit_callbacks,
+    ):
+        """D5: actor_id is always the acting account; user_id is null for a
+        guest on quote, reserve, commit and release alike."""
+        settings.STAPEL_ORDERS = {**settings.STAPEL_ORDERS, "CHECKOUT_REQUIRES_ACCOUNT": False}
+        account = request.getfixturevalue(who)
+        staff = request.getfixturevalue("staff")
+        client = client_for(account)
+        catalog.put("a")
+        client.post(LINES, {"purchasable_type": "item", "purchasable_key": "a"}, format="json")
+        promo, _ = promo_and_shipping(installed)
+        stock = installed(FakeHook("stock"))
+        client.post(QUOTE, {}, format="json")
+        with django_capture_on_commit_callbacks(execute=True):
+            order = client.post(CHECKOUT, body(delivery={"method": "courier"}),
+                                format="json").json()
+        with django_capture_on_commit_callbacks(execute=True):
+            client_for(staff).post(f"{V1}/orders/{order['id']}/transition/",
+                                   {"to": "cancelled"}, format="json")
+        expected_user = None if who == "guest" else str(account.pk)
+        payloads = [promo.calls[0], promo.calls[-1], *stock.ops("reserve"),
+                    *stock.ops("commit"), *stock.ops("release")]
+        assert len(payloads) == 5
+        for payload in payloads:
+            assert payload["actor_id"] == str(account.pk)
+            assert payload["user_id"] == expected_user
+        placed = [e.payload for e in captured_events if e.event_type == "orders.order.placed"]
+        assert placed[0]["actor_id"] == str(account.pk) == placed[0]["user_id"]
+
     def test_oversized_context_is_400(self, filled):
         resp = filled.post(QUOTE, {"context": {"blob": "x" * 9000}}, format="json")
         assert resp.status_code == 400
