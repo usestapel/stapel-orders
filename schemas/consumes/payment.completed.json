@@ -1,7 +1,7 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "title": "payment.completed",
-  "description": "A payment for a referenced object completed (provider-agnostic; stapel-billing ask B1 and the PAYMENT='mock' provider emit it). stapel-orders acts only on reference_type == 'order', reference_key = order id. amount is a decimal string; an amount or currency that differs from the order's total sends the order to needs_review.",
+  "description": "What stapel-orders reads from payment.completed, a fact owned and emitted by the payment module (stapel-billing; the reference fields are billing ask B1). Documentation only: never registered with on_action, because the owner's emits schema is the contract. stapel-orders acts only on reference_type == 'order', reference_key = order id, and ignores any other payload. amount is a decimal string; an amount or currency that differs from the order's total sends the order to needs_review. orders' own providers emit orders.payment.completed instead.",
   "type": "object",
   "properties": {
     "reference_type": {"type": "string", "maxLength": 32},

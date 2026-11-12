@@ -92,6 +92,30 @@ the machine form.
     mismatch is `error.409.total_changed` with the fresh `total` and
     `quote` in params, and reserves nothing.
 
+## Payment facts (defect O2, 2026-11-12)
+
+24. **Orders never emits `payment.completed`.** That fact is stapel-billing's
+    (billing ships `schemas/emits/payment.completed.json` and emits it with
+    `user_id`, `amount_cents`, `transaction_id`, `created_at`, …). The
+    `PAYMENT` providers registered in orders, the mock included, emit
+    **`orders.payment.completed`** `{reference_type: "order", reference_key,
+    amount, currency, provider_ref, user_id | null, simulated}`; `user_id` is
+    null for a guest account (as in item 3), `simulated` is true for the mock.
+    Orders' consumer reads both names; on `payment.completed` it acts only
+    on `reference_type == "order"`. The old name is not emitted alongside
+    for a deprecation minor: an emit of it under billing's schema is the
+    defect itself, and its only 0.1.0 consumer is orders' own handler,
+    which still reads it. Companions that watched the mock's
+    `payment.completed` read `orders.payment.completed` or
+    `orders.order.paid`.
+25. **Consumer-side schemas are not registered.** `on_action(schema=)` for
+    `payment.completed` / `user.merged` is gone: core keeps one schema per
+    action name and validates the emitter against it, so orders' copy
+    replaced billing's whenever core's autoload ran first and refused
+    billing's own payments. The same class sits in core
+    (`on_action(schema=)` writes the emit registry) and in
+    stapel-reservations 0.1.0 (same mock, same consumer schemas).
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

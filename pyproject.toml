@@ -50,6 +50,9 @@ test = [
     "stapel-tools>=0.76.0,<1",
     # the wire gate validates bodies; core's VALIDATE_SCHEMAS needs it too
     "jsonschema>=4",
+    # owner of payment.completed: tests/test_billing_seam.py walks orders'
+    # payment paths under billing's real schema
+    "stapel-billing>=0.24.1,<1",
 ]
 
 [tool.setuptools]

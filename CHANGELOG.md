@@ -54,6 +54,35 @@ additive fields.
   `tests/test_checkout_hooks_pg.py`).
 - `docs/CONTRACT-DELTAS.md`: where the brick-wave spec was silent, the
   reading built here.
+- Fact **`orders.payment.completed`** `{reference_type: "order",
+  reference_key, amount, currency, provider_ref, user_id | null, simulated}`
+  (`schemas/emits/`): what the `PAYMENT` providers registered in orders emit;
+  the payment consumer reads it and billing's `payment.completed` alike.
+
+### Fixed
+- **`PAYMENT="mock"` next to stapel-billing refused every checkout**
+  (`payment.completed violates schema: 'user_id' is a required property`).
+  `payment.completed` is billing's fact with billing's shape; the mock
+  emitted it with orders' shape. The mock now emits
+  `orders.payment.completed` (`simulated: true`, `user_id` null for a guest)
+  and orders never emits `payment.completed`.
+- **Orders' consumer schemas replaced their owners' emit schemas.**
+  `on_action(..., schema=)` for `payment.completed` and `user.merged` wrote
+  orders' consumer-side copy into the one per-name registry the emitter is
+  validated against; with core's autoload running first (taskstore listed
+  before orders), billing's own `payment.completed` was refused
+  (`'reference_type' is a required property`). Consumers now subscribe
+  without a schema and read tolerantly; `tests/test_fact_schemas.py` fails
+  when a consumed fact's schema reaches the registry or when orders emits a
+  fact it does not declare or that does not match its file.
+
+### Deprecated
+- A host `PAYMENT` provider emitting `payment.completed` for an order: emit
+  `orders.payment.completed` (`stapel_orders.payment.payment_completed_payload`).
+  The consumer still reads `payment.completed` with `reference_type ==
+  "order"` (billing ask B1), but next to billing that name carries billing's
+  schema and such an emit is refused. Consumers that watched the mock's
+  `payment.completed` read `orders.payment.completed` or `orders.order.paid`.
 
 ## [0.1.0]
 

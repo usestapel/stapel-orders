@@ -1,7 +1,7 @@
 {
   "_comment": "Hand-curated layer of docs/capabilities.json. The emitter (stapel_orders/_capabilities.py) merges this over the derived axes; an axis in conf.py DEFAULTS marked as an axis but missing here (or vice versa) is a loud emission error. surface_roots + surface are the usage layer: every public function of the selected modules carries an intent line here.",
   "maturity": "alpha",
-  "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.",
+  "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.",
   "requires": [
     {
       "module": "stapel-core",
@@ -139,7 +139,11 @@
     },
     "register_payment_provider": {
       "kind": "factory",
-      "intent": "Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome still arrives as payment.completed."
+      "intent": "Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome arrives as orders.payment.completed (or the payment module's payment.completed)."
+    },
+    "payment_completed_payload": {
+      "kind": "factory",
+      "intent": "Build the orders.payment.completed payload a PAYMENT provider emits when an order is paid in full (user_id null for a guest, simulated for test money). Reach for it in a provider instead of emitting the payment module's payment.completed."
     },
     "reset_payment_providers": {
       "kind": "factory",

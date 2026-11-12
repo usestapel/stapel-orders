@@ -102,7 +102,8 @@ def _amount(raw) -> Decimal | None:
 
 
 def apply_payment(payload: dict) -> str:
-    """Apply one ``payment.completed`` fact. Returns what happened.
+    """Apply one payment fact (``orders.payment.completed`` or the payment
+    module's ``payment.completed``). Returns what happened.
 
     Idempotent by state: a fact for an already-paid order with the same
     ``provider_ref`` is a no-op. An amount or currency that differs from the

@@ -1,8 +1,8 @@
 # stapel-orders 0.1.0
 
-Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
+Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
-Contract: axes 2 · surface 23 · extension points 9 · operations 11 · error codes 60 · flows 4.
+Contract: axes 2 · surface 24 · extension points 9 · operations 11 · error codes 60 · flows 4.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -47,12 +47,14 @@ This is the answer to "does Stapel already have something for X?". `instead of` 
   The provider this deployment runs (orders_settings.PAYMENT).
 - build_request — stapel_orders.seams.build_request
   The adjuster request for a cart's lines (currency, subtotal, lines with attrs, context); reserve adds adjustments_so_far and attempt_key to it.
+- payment_completed_payload — stapel_orders.payment.payment_completed_payload
+  Build the orders.payment.completed payload a PAYMENT provider emits when an order is paid in full (user_id null for a guest, simulated for test money). Reach for it in a provider instead of emitting the payment module's payment.completed.
 - register_adjuster — stapel_orders.seams.register_adjuster
   Register or override an adjuster at runtime (None removes) — a test lever and an escape hatch; companions register through STAPEL_ORDERS['ADJUSTERS'] in their settings fragment because they never import orders.
 - register_checkout_hook — stapel_orders.seams.register_checkout_hook
   Register or override a checkout hook at runtime (None removes); companions use STAPEL_ORDERS['CHECKOUT_HOOKS'] instead.
 - register_payment_provider — stapel_orders.payment.register_payment_provider
-  Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome still arrives as payment.completed.
+  Register a payment provider under a short name PAYMENT (and the environment) may then choose. The provider starts a payment in the checkout transaction; the outcome arrives as orders.payment.completed (or the payment module's payment.completed).
 - register_purchasable_type — stapel_orders.registry.register_purchasable_type
   Declare a purchasable type and its resolver Function from an AppConfig.ready() (or a test). The registry ships empty; this and STAPEL_ORDERS['PURCHASABLE_TYPES'] are the only two ways in, and both replace hand-building a cart for a custom product. entry=None removes a type a lower layer provided.
 - reset_payment_providers — stapel_orders.payment.reset_payment_providers

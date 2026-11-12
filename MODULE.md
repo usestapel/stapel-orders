@@ -131,7 +131,20 @@ by `tests/test_checkout_hooks_pg.py` (`STAPEL_ORDERS_TEST_PG`).
 
 `register_payment_provider(name, factory)`; a provider's
 `start(order, emit)` runs inside the checkout transaction. Whatever it does,
-`paid` is set only by the `payment.completed` consumer (`actions.py`).
+`paid` is set only by the payment consumer (`actions.py`), which reads two
+facts with one handler:
+
+- `orders.payment.completed` — orders' own fact (`schemas/emits/`). A
+  provider registered here emits it, built by
+  `payment.payment_completed_payload(order, provider_ref=…, simulated=…)`;
+  `user_id` is null for a guest account, `simulated` is true when no money
+  moved (the mock). Amount and currency must equal the order's, otherwise
+  the order goes to `needs_review`.
+- `payment.completed` — **owned by the payment module (stapel-billing)**,
+  only read here, and only when it carries `reference_type == "order"`
+  (billing ask B1). Orders never emits it. A host provider that emits
+  `payment.completed` for an order is deprecated since 0.2.0: next to
+  billing that name is validated against billing's schema and refused.
 
 ### Serializer seams and presenters (`views.py`, `presenters.py`)
 
@@ -164,8 +177,10 @@ the declaration is static, the policy is a setting); the staff transition is
 | Action (emits) | `orders.order.placed` | `{order_id, user_id, currency, total, placed_at, attempt_key, lines[]}` | `schemas/emits/` |
 | Action (emits) | `orders.order.status_changed` | `{order_id, user_id, from, to, actor, reason?}` | `schemas/emits/` |
 | Action (emits) | `orders.order.paid` | `{order_id, provider_ref}` | `schemas/emits/` |
+| Action (emits) | `orders.payment.completed` | `{reference_type: "order", reference_key, amount, currency, provider_ref, user_id \| null, simulated}` | `schemas/emits/` |
 | Action (consumes) | `user.merged` | `{from_user_id, into_user_id}` | `schemas/consumes/` |
-| Action (consumes) | `payment.completed` | `{reference_type, reference_key, amount, currency, provider_ref}` | `schemas/consumes/` |
+| Action (consumes) | `orders.payment.completed` | own fact (above) | `schemas/emits/` |
+| Action (consumes) | `payment.completed` (billing's) | reads `{reference_type: "order", reference_key, amount, currency, provider_ref}`, ignores anything else | `schemas/consumes/` (documentation; never registered) |
 | Action (consumes) | `user.deleted`, `gdpr.erasure.requested` | via `register_gdpr_owner("orders", ["account"], …)` | core |
 | Function (provides) | `orders.order.status` | `{order_id}` → `{status, payment_status, user_id, total, currency}` | `schemas/functions/` |
 | Function (provides) | `orders.orders_export` | `{cursor, limit}` → `{rows, cursor, total}` | `schemas/functions/` |
@@ -201,6 +216,10 @@ pinned in `_codegen_settings.enum_name_overrides()`.
 - **Never read a purchasable on the cart read path** — snapshots exist so a
   sibling's outage cannot break `GET cart/`.
 - **Never convert currency in a cart** or re-round a total.
+- **Never emit a fact another module owns, and never pass `schema=` to
+  `on_action` for one**: the schema registry is one per name and validates
+  the emitter, so a consumer-side copy refuses the owner's payloads
+  (`tests/test_fact_schemas.py`).
 - **Never set `status`/`payment_status` directly**; go through
   `services.orders.transition` / the payment consumer.
 - **Don't bypass the settings namespace** with `os.getenv` at import time.

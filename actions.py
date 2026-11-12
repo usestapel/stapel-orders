@@ -5,28 +5,31 @@ Handlers are idempotent: delivery is at-least-once.
 - ``user.merged`` (stapel-auth) — a guest was folded into an account on
   sign-in: its cart lines join the survivor's cart (same pair summed and
   capped, another currency dropped) and its orders follow it.
-- ``payment.completed`` (a payment provider; billing ask B1, or the mock) —
-  only ``reference_type == "order"`` is ours.
+- ``orders.payment.completed`` (this module's fact, emitted by the
+  ``PAYMENT`` providers registered here) and ``payment.completed`` (the
+  payment module's fact; billing ask B1) — one consumer, and only
+  ``reference_type == "order"`` is ours.
+
 - ``user.deleted`` / ``gdpr.erasure.requested`` are answered by
   ``register_gdpr_owner`` (``apps.py``), not here.
+
+A subscriber here never passes ``schema=`` for a fact another module owns:
+``on_action`` writes it into the one per-name registry the EMITTER is
+validated against, so a consumer-side copy would refuse the owner's own
+payloads (``tests/test_fact_schemas.py``). The files in
+``schemas/consumes/`` document what is read; the handlers read tolerantly.
 """
-import json
 import logging
-from pathlib import Path
 
 from django.db import transaction
 from stapel_core.comm import on_action
 
+from .services.events import EVENT_FOREIGN_PAYMENT_COMPLETED, EVENT_PAYMENT_COMPLETED
+
 logger = logging.getLogger(__name__)
 
-_CONSUMES = Path(__file__).resolve().parent / "schemas" / "consumes"
 
-
-def _schema(name: str) -> dict:
-    return json.loads((_CONSUMES / f"{name}.json").read_text(encoding="utf-8"))
-
-
-@on_action("user.merged", schema=_schema("user.merged"))
+@on_action("user.merged")
 def handle_user_merged(event):
     """Re-parent the guest's cart lines and orders to the surviving account."""
     from .models import CheckoutAttempt, CheckoutHookState, Order
@@ -60,7 +63,8 @@ def handle_user_merged(event):
         )
 
 
-@on_action("payment.completed", schema=_schema("payment.completed"))
+@on_action(EVENT_PAYMENT_COMPLETED)
+@on_action(EVENT_FOREIGN_PAYMENT_COMPLETED)
 def handle_payment_completed(event):
     """Mark an order paid, or send it to review when the amount disagrees."""
     from .services.orders import apply_payment

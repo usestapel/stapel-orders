@@ -1,17 +1,24 @@
 """Payment providers — how an order gets paid (``STAPEL_ORDERS["PAYMENT"]``).
 
 Orders does not take payments. It asks a provider to start one inside the
-checkout transaction and learns the outcome from the ``payment.completed``
-Action (``reference_type == "order"``), whoever emits it — the consumer in
-``actions.py`` is the only place ``payment_status`` becomes ``paid``.
+checkout transaction and learns the outcome from a payment fact — the
+consumer in ``actions.py`` is the only place ``payment_status`` becomes
+``paid``:
+
+- ``orders.payment.completed`` — this module's own fact (schema in
+  ``schemas/emits/``). Providers registered here emit it.
+- ``payment.completed`` with ``reference_type == "order"`` — the fact a
+  payment module owns (stapel-billing). Orders only reads it and never emits
+  it: the owner's schema is the contract, and a second shape under the same
+  name refuses one emitter or the other.
 
 Built-ins:
 
 - ``none`` — nothing is started; the order stays ``unpaid`` and staff
   confirm it by hand.
-- ``mock`` — emits ``payment.completed`` for the full amount in the checkout
-  transaction. Allowed in the ``prototype`` posture stage only (check
-  E002/W002); never a ``USE_MOCK_*`` switch.
+- ``mock`` — emits ``orders.payment.completed`` (``simulated: true``) for the
+  full amount in the checkout transaction. Allowed in the ``prototype``
+  posture stage only (check E002/W002); never a ``USE_MOCK_*`` switch.
 
 A real provider is registered by name (:func:`register_payment_provider`)
 or named by dotted path in settings; the environment may pick among the
@@ -45,23 +52,38 @@ class NoPayment(PaymentProvider):
         return None
 
 
+def payment_completed_payload(order, *, provider_ref: str, simulated: bool = False) -> dict:
+    """The ``orders.payment.completed`` payload for *order* paid in full.
+
+    ``user_id`` is null for a guest account, as on every seam payload.
+    """
+    from .money import to_wire
+    from .services.events import fact_user_id
+
+    return {
+        "reference_type": "order",
+        "reference_key": str(order.pk),
+        "amount": to_wire(order.total),
+        "currency": order.currency,
+        "provider_ref": provider_ref,
+        "user_id": fact_user_id(order.user_id),
+        "simulated": simulated,
+    }
+
+
 class MockPayment(PaymentProvider):
     """Pays every order in full, at once, through the real consumer path."""
 
     name = "mock"
 
     def start(self, order, emit) -> str | None:
-        from .money import to_wire
+        from .services.events import EVENT_PAYMENT_COMPLETED
 
         emit(
-            "payment.completed",
-            {
-                "reference_type": "order",
-                "reference_key": str(order.pk),
-                "amount": to_wire(order.total),
-                "currency": order.currency,
-                "provider_ref": f"mock-{order.number}",
-            },
+            EVENT_PAYMENT_COMPLETED,
+            payment_completed_payload(
+                order, provider_ref=f"mock-{order.number}", simulated=True
+            ),
             key=str(order.pk),
         )
         return None

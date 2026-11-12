@@ -18,6 +18,11 @@ logger = logging.getLogger(__name__)
 EVENT_PLACED = "orders.order.placed"
 EVENT_STATUS_CHANGED = "orders.order.status_changed"
 EVENT_PAID = "orders.order.paid"
+#: A payment for an order completed — emitted by the PAYMENT providers
+#: registered here. ``payment.completed`` (stapel-billing's) is only read.
+EVENT_PAYMENT_COMPLETED = "orders.payment.completed"
+#: The payment module's fact orders consumes and never emits.
+EVENT_FOREIGN_PAYMENT_COMPLETED = "payment.completed"
 SIGNAL_CART_CHANGED = "orders.cart.changed"
 
 NOTIFY_PLACED = "orders.placed"
@@ -45,6 +50,30 @@ def placed_payload(order, lines, attempt_key=None) -> dict:
     if attempt_key is not None:
         payload["attempt_key"] = str(uuid.UUID(str(attempt_key)))
     return payload
+
+
+def fact_user_id(user_id) -> str | None:
+    """``user_id`` on a payment fact: null when it names a guest account.
+
+    A guest id addresses nobody (no receipt, no account page), so the facts
+    that may reach a payer carry null for it, like the seam payloads do. An
+    id that no longer resolves (erased, another service's user table) is
+    passed through as stored.
+    """
+    if not user_id:
+        return None
+    from django.contrib.auth import get_user_model
+    from django.core.exceptions import ValidationError
+
+    from .. import seams
+
+    try:
+        user = get_user_model().objects.filter(pk=user_id).first()
+    except (ValueError, TypeError, ValidationError):
+        return str(user_id)
+    if user is not None and seams.is_guest(user):
+        return None
+    return str(user_id)
 
 
 def status_changed_payload(order, from_status: str, actor: str, reason: str = "") -> dict:

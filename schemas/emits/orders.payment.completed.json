@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "orders.payment.completed",
+  "description": "A payment for an order completed, as reported by the PAYMENT provider registered in stapel-orders (the built-in mock, or a host's provider). The stapel-orders consumer marks the order paid on it (amount and currency must equal the order's, otherwise needs_review). Not stapel-billing's payment.completed: that fact is owned by billing, has billing's shape, and orders only reads it. user_id is null for a guest account. simulated is true when no money moved (PAYMENT='mock'); a consumer that counts revenue or writes to the payer must skip it. Key = order id. Since 0.2.0.",
+  "type": "object",
+  "properties": {
+    "reference_type": {"const": "order"},
+    "reference_key": {"type": "string", "pattern": "^[0-9]+$", "maxLength": 255},
+    "amount": {"type": "string", "pattern": "^[0-9]+\\.[0-9]{2}$"},
+    "currency": {"type": "string", "pattern": "^[A-Z]{3}$"},
+    "provider_ref": {"type": "string", "minLength": 1, "maxLength": 128},
+    "user_id": {"type": ["string", "null"]},
+    "simulated": {"type": "boolean"}
+  },
+  "required": ["reference_type", "reference_key", "amount", "currency", "provider_ref", "user_id", "simulated"],
+  "additionalProperties": false
+}
