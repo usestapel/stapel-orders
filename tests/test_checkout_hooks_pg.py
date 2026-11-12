@@ -7,7 +7,10 @@ the module is skipped with a ``NOT ARMED`` reason, because SQLite drops
 - two threads submit one attempt key at once: one order, one reservation,
   no release, the twin answers the replay;
 - a checkout that dies after ``reserve`` leaves a committed ``pending`` row
-  (the order transaction really rolled back) that the sweep releases.
+  (the order transaction really rolled back) that the sweep releases;
+- a STAGGERED twin (it reads the row while the first order transaction is
+  open, then waits on the cart lock) leaves the live order's row placed or
+  committed, and the sweep releases nothing.
 """
 import datetime
 import threading
@@ -125,3 +128,54 @@ def test_crash_after_reserve_is_released_by_the_sweep(user, catalog, monkeypatch
     assert [p["reason"] for p in hook.ops("release")] == ["orphaned"]
     assert hook.holds[str(key)]["state"] == "released"
     assert CheckoutHookState.objects.get().state == HookState.RELEASED
+
+
+def test_a_staggered_twin_does_not_orphan_the_live_order(user, catalog, settings):
+    from stapel_orders.payment import PaymentProvider, register_payment_provider
+
+    class SlowPayment(PaymentProvider):
+        """Keeps the order transaction open after the rows were placed."""
+
+        def start(self, order, emit):
+            time.sleep(1.0)
+            return None
+
+    register_payment_provider("slow", SlowPayment)
+    settings.STAPEL_ORDERS = {**settings.STAPEL_ORDERS, "PAYMENT": "slow"}
+    catalog.put("a", price="10.00")
+    cart_service.add_line(str(user.pk), "item", "a", 1)
+    hook = FakeHook("stock").install()
+    key = uuid.uuid4()
+    results, failures = [], []
+
+    def submit(delay):
+        try:
+            time.sleep(delay)
+            results.append(checkout_service.checkout(
+                user, idempotency_key=key, contact=_contact(), address=_address(),
+            ))
+        except Exception as exc:  # surfaced below
+            failures.append(exc)
+        finally:
+            connection.close()
+
+    threads = [threading.Thread(target=submit, args=(delay,)) for delay in (0, 0.4)]
+    try:
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(30)
+        assert failures == []
+        assert sorted(created for _, created in results) == [False, True]
+        assert Order.objects.count() == 1
+        row = CheckoutHookState.objects.get()
+        assert row.order_id == Order.objects.get().pk
+        assert row.state == HookState.COMMITTED
+        later = timezone.now() + datetime.timedelta(seconds=901)
+        counts = hook_service.sweep(now=later)
+        assert counts["orphans_released"] == 0 and counts["adopted"] == 0
+    finally:
+        hook.uninstall()
+    assert len(hook.ops("reserve")) == 1
+    assert hook.ops("release") == []
+    assert hook.holds[str(key)]["state"] == "committed"

@@ -15,6 +15,14 @@ One ``CheckoutHookState`` row per ``(attempt_key, hook name)``:
 
 Every call is idempotent on ``(attempt_key, name)`` at the hook's side; a
 release followed by a new reserve of the same pair reserves anew.
+
+Every state change of a row is a conditional UPDATE through :func:`move`
+over the table :data:`ROW_TRANSITIONS`; nothing else writes ``state``. A
+row never moves backwards: ``placed``/``committed`` → ``pending`` is not an
+edge, so a replay twin cannot hand a live order's reservation to the orphan
+sweep. A release is claimed (``→ releasing``) before the companion is
+called, and ``checkout_failed``/``orphaned`` are claimed only from
+``pending`` — never for a pair recorded as placed or committed.
 """
 from __future__ import annotations
 
@@ -32,7 +40,7 @@ from ..errors import (
     ERR_409_CHECKOUT_HOOK_REFUSED,
     ERR_503_CHECKOUT_HOOK_UNAVAILABLE,
 )
-from ..models import CheckoutHookState, HookState
+from ..models import CheckoutAttempt, CheckoutHookState, HookState
 from . import OrdersError
 
 logger = logging.getLogger(__name__)
@@ -41,7 +49,41 @@ REASON_CHECKOUT_FAILED = "checkout_failed"
 REASON_CANCELLED = "cancelled"
 REASON_ORPHANED = "orphaned"
 
-_REUSABLE = (HookState.PENDING, HookState.RELEASED)
+EV_REUSE = "reuse"
+EV_PLACE = "place"
+EV_COMMIT = "commit"
+EV_CANCEL = "cancel"
+EV_FAIL = "fail"
+EV_ORPHAN = "orphan"
+EV_RELEASED = "released"
+
+#: event -> (states it may leave, state it enters). Absent pairs are illegal.
+ROW_TRANSITIONS: dict[str, tuple[frozenset, str]] = {
+    # a released pair is reserved anew by a retry of the same attempt key
+    EV_REUSE: (frozenset({HookState.RELEASED}), HookState.PENDING),
+    # the order transaction took the reservation (also: the sweep adopts a
+    # pending row whose attempt key has an order)
+    EV_PLACE: (frozenset({HookState.PENDING}), HookState.PLACED),
+    EV_COMMIT: (frozenset({HookState.PLACED}), HookState.COMMITTED),
+    # cancel / refund: the only event that undoes a placed or committed pair
+    EV_CANCEL: (frozenset({HookState.PLACED, HookState.COMMITTED}), HookState.RELEASING),
+    EV_FAIL: (frozenset({HookState.PENDING}), HookState.RELEASING),
+    EV_ORPHAN: (frozenset({HookState.PENDING}), HookState.RELEASING),
+    EV_RELEASED: (frozenset({HookState.RELEASING}), HookState.RELEASED),
+}
+
+
+def move(rows, event: str, **fields) -> int:
+    """Apply *event* to *rows* (a queryset) as one conditional UPDATE.
+
+    Only rows in a source state of the event move; the count says how many
+    did. The UPDATE takes the row lock and re-reads the state under it, so a
+    concurrent mover either wins or finds the row gone from the source set.
+    """
+    sources, target = ROW_TRANSITIONS[event]
+    return rows.filter(state__in=sources).update(
+        state=target, updated_at=timezone.now(), **fields
+    )
 
 
 def _entries() -> dict[str, dict]:
@@ -51,27 +93,39 @@ def _entries() -> dict[str, dict]:
 def prepare(attempt_key, user_id: str) -> list[str]:
     """Durable ``pending`` rows for every registered hook; names to reserve.
 
-    A row this attempt key already placed (a concurrent twin got there first)
-    is left alone and not reserved again; a released one is reused.
+    A row of this attempt key that is placed or committed belongs to an
+    order (a twin got there first): it is neither touched nor reserved
+    again. A pending one is reserved without a write; a released one is
+    reused. A failed attempt's release that is still unanswered is finished
+    first, or the checkout is refused (fail closed).
     """
     names = []
     for name, _entry in seams.get_checkout_hooks():
-        with transaction.atomic():
-            row, created = CheckoutHookState.objects.get_or_create(
-                attempt_key=attempt_key, name=name,
-                defaults={"user_id": user_id, "state": HookState.PENDING},
-            )
-            if row.user_id != user_id:
-                raise OrdersError(409, ERR_409_CHECKOUT_ATTEMPT_CONFLICT)
-            if row.state not in _REUSABLE:
-                continue
-            if not created:
-                row.state = HookState.PENDING
-                row.order = None
-                row.token = ""
-                row.release_reason = ""
-                row.save(update_fields=["state", "order", "token", "release_reason", "updated_at"])
-        names.append(name)
+        for _round in range(3):
+            with transaction.atomic():
+                row, created = CheckoutHookState.objects.get_or_create(
+                    attempt_key=attempt_key, name=name,
+                    defaults={"user_id": user_id, "state": HookState.PENDING},
+                )
+                if row.user_id != user_id:
+                    raise OrdersError(409, ERR_409_CHECKOUT_ATTEMPT_CONFLICT)
+                state = row.state
+                if not created and state == HookState.RELEASED:
+                    created = bool(move(
+                        CheckoutHookState.objects.filter(pk=row.pk), EV_REUSE,
+                        order=None, token="", release_reason="",
+                    ))
+                    if not created:
+                        continue  # moved under us: read it again
+            if created or state == HookState.PENDING:
+                names.append(name)
+            elif state == HookState.RELEASING and row.order_id is None:
+                if not _release(row, row.release_reason or REASON_CHECKOUT_FAILED):
+                    raise OrdersError(503, ERR_503_CHECKOUT_HOOK_UNAVAILABLE, {"hook": name})
+                continue  # released now: reused on the next round
+            break
+        else:
+            raise OrdersError(503, ERR_503_CHECKOUT_HOOK_UNAVAILABLE, {"hook": name})
     return names
 
 
@@ -112,12 +166,19 @@ def reserve_all(names: list[str], request: dict, attempt_key, reserved: list[str
 
 
 def mark_placed(attempt_key, names: list[str], order, tokens: dict[str, str]) -> None:
-    """Inside the checkout transaction: the reservations now belong to *order*."""
+    """Inside the checkout transaction: the reservations now belong to *order*.
+
+    A row that is no longer ``pending`` (the sweep or a failed twin claimed
+    its release meanwhile) refuses the checkout: the companion may already
+    have let the reservation go.
+    """
     for name in names:
-        CheckoutHookState.objects.filter(attempt_key=attempt_key, name=name).update(
-            state=HookState.PLACED, order=order, token=tokens.get(name, ""),
-            updated_at=timezone.now(),
+        placed = move(
+            CheckoutHookState.objects.filter(attempt_key=attempt_key, name=name),
+            EV_PLACE, order=order, token=tokens.get(name, ""),
         )
+        if not placed:
+            raise OrdersError(503, ERR_503_CHECKOUT_HOOK_UNAVAILABLE, {"hook": name})
     if names:
         order_id = order.pk
         transaction.on_commit(lambda: commit_for_order(order_id))
@@ -161,14 +222,12 @@ def _commit(row: CheckoutHookState) -> bool:
     }
     if not _call(row, "commit", payload):
         return False
-    CheckoutHookState.objects.filter(pk=row.pk, state=HookState.PLACED).update(
-        state=HookState.COMMITTED, last_error="", updated_at=timezone.now(),
-    )
+    move(CheckoutHookState.objects.filter(pk=row.pk), EV_COMMIT, last_error="")
     return True
 
 
-def _release(row: CheckoutHookState, reason: str, tokens: dict | None = None,
-             expect=HookState.RELEASING) -> bool:
+def _release(row: CheckoutHookState, reason: str, tokens: dict | None = None) -> bool:
+    """Call ``release`` for a row already claimed ``releasing``."""
     payload = {
         "attempt_key": str(row.attempt_key),
         "token": _token(row, tokens),
@@ -177,10 +236,8 @@ def _release(row: CheckoutHookState, reason: str, tokens: dict | None = None,
     }
     if not _call(row, "release", payload):
         return False
-    CheckoutHookState.objects.filter(pk=row.pk, state=expect).update(
-        state=HookState.RELEASED, release_reason=reason, last_error="",
-        updated_at=timezone.now(),
-    )
+    move(CheckoutHookState.objects.filter(pk=row.pk), EV_RELEASED,
+         release_reason=reason, last_error="")
     return True
 
 
@@ -195,25 +252,32 @@ def commit_for_order(order_id) -> int:
 def release_now(attempt_key, names: list[str], tokens: dict[str, str]) -> None:
     """After a failed checkout: release what this attempt asked to reserve.
 
-    Runs outside the (rolled back) checkout transaction. Rows stay
-    ``pending`` when a release is unanswered, so the sweep retries it.
+    Runs outside the (rolled back) checkout transaction. Only ``pending``
+    rows without an order are claimed: a pair a twin placed or committed is
+    never released as ``checkout_failed``. An unanswered release stays
+    ``releasing`` and the sweep retries it.
     """
     rows = CheckoutHookState.objects.filter(
-        attempt_key=attempt_key, name__in=names, state=HookState.PENDING
+        attempt_key=attempt_key, name__in=names, state=HookState.PENDING,
+        order__isnull=True,
     )
     for row in reversed(_in_hook_order(rows)):
+        claimed = move(
+            CheckoutHookState.objects.filter(pk=row.pk, order__isnull=True),
+            EV_FAIL, release_reason=REASON_CHECKOUT_FAILED,
+        )
+        if not claimed:
+            continue
         try:
-            _release(row, REASON_CHECKOUT_FAILED, tokens, expect=HookState.PENDING)
+            _release(row, REASON_CHECKOUT_FAILED, tokens)
         except Exception:  # a failed release must never mask the refusal
             logger.exception("orders: release of checkout hook %s failed", row.name)
 
 
 def release_for_order(order_id) -> None:
     """Inside the cancel transaction: mark the order's reservations for release."""
-    updated = CheckoutHookState.objects.filter(
-        order_id=order_id, state__in=(HookState.PLACED, HookState.COMMITTED)
-    ).update(state=HookState.RELEASING, release_reason=REASON_CANCELLED,
-             updated_at=timezone.now())
+    updated = move(CheckoutHookState.objects.filter(order_id=order_id), EV_CANCEL,
+                   release_reason=REASON_CANCELLED)
     if updated:
         transaction.on_commit(lambda: _release_marked(order_id))
 
@@ -239,7 +303,8 @@ def sweep(*, now: datetime.datetime | None = None, orphan_seconds: int | None = 
         orders_settings.CHECKOUT_HOOK_ORPHAN_SECONDS if orphan_seconds is None else orphan_seconds
     )
     cutoff = (now or timezone.now()) - datetime.timedelta(seconds=seconds)
-    counts = {"committed": 0, "released": 0, "orphans_released": 0, "unanswered": 0}
+    counts = {"committed": 0, "released": 0, "orphans_released": 0, "adopted": 0,
+              "unanswered": 0}
 
     for row in CheckoutHookState.objects.select_related("order").filter(state=HookState.PLACED):
         counts["committed" if _commit(row) else "unanswered"] += 1
@@ -247,18 +312,51 @@ def sweep(*, now: datetime.datetime | None = None, orphan_seconds: int | None = 
         ok = _release(row, row.release_reason or REASON_CANCELLED)
         counts["released" if ok else "unanswered"] += 1
     orphans = CheckoutHookState.objects.filter(state=HookState.PENDING, updated_at__lt=cutoff)
-    for row in orphans:
-        ok = _release(row, REASON_ORPHANED, expect=HookState.PENDING)
-        counts["orphans_released" if ok else "unanswered"] += 1
+    for row in list(orphans):
+        verdict = _claim_orphan(row.pk, cutoff)
+        if verdict == "adopted":
+            counts["adopted"] += 1
+        elif verdict == "claimed":
+            ok = _release(row, REASON_ORPHANED)
+            counts["orphans_released" if ok else "unanswered"] += 1
     return counts
+
+
+def _claim_orphan(pk, cutoff) -> str | None:
+    """Under the row lock: is the row still an orphan? Claim it, or adopt it.
+
+    Re-read with ``FOR UPDATE``: still ``pending``, still older than the
+    cutoff, and no order exists for its attempt key. A pending row whose
+    attempt key HAS an order belongs to that order (it is placed, and
+    committed by the next pass) — releasing it would undo a live order.
+    """
+    with transaction.atomic():
+        row = CheckoutHookState.objects.select_for_update().filter(
+            pk=pk, state=HookState.PENDING, updated_at__lt=cutoff
+        ).first()
+        if row is None:
+            return None
+        attempt = CheckoutAttempt.objects.filter(
+            idempotency_key=row.attempt_key, user_id=row.user_id
+        ).first()
+        rows = CheckoutHookState.objects.filter(pk=pk)
+        if attempt is not None and attempt.order_id:
+            move(rows, EV_PLACE, order_id=attempt.order_id)
+            logger.warning("orders: pending hook row %s of order %s adopted, not released",
+                           pk, attempt.order_id)
+            return "adopted"
+        move(rows, EV_ORPHAN, release_reason=REASON_ORPHANED)
+        return "claimed"
 
 
 __all__ = [
     "REASON_CANCELLED",
     "REASON_CHECKOUT_FAILED",
     "REASON_ORPHANED",
+    "ROW_TRANSITIONS",
     "commit_for_order",
     "mark_placed",
+    "move",
     "prepare",
     "release_for_order",
     "release_now",

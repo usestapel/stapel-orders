@@ -17,5 +17,5 @@ class Command(BaseCommand):
         counts = sweep(orphan_seconds=options["orphan_seconds"])
         self.stdout.write(
             "committed {committed}, released {released}, orphans released "
-            "{orphans_released}, unanswered {unanswered}".format(**counts)
+            "{orphans_released}, adopted {adopted}, unanswered {unanswered}".format(**counts)
         )
