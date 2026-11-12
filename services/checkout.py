@@ -31,6 +31,7 @@ from ..errors import (
     ERR_409_CART_CURRENCY_MISMATCH,
     ERR_409_CART_PRICE_CHANGED,
     ERR_409_PURCHASABLE_UNAVAILABLE,
+    ERR_409_TOTAL_CHANGED,
     ERR_503_PURCHASABLE_UNAVAILABLE,
 )
 from ..models import (
@@ -200,6 +201,16 @@ def quote_cart(user, context: dict | None = None):
     return cart, quote_lines(user, currency, lines, context or {})
 
 
+def _total_changed(cart, quote: seams.Quote) -> OrdersError:
+    """The shopper saw another total: refuse with the fresh one and its quote."""
+    from ..presenters import get_quote_presenter
+    from ..serializers import CartQuoteResponseSerializer
+
+    fresh = CartQuoteResponseSerializer(get_quote_presenter()().present(cart, quote)).data
+    return OrdersError(409, ERR_409_TOTAL_CHANGED, {"total": money.to_wire(quote.total),
+                                                    "quote": fresh})
+
+
 def _refusal_from(error: seams.QuoteError) -> OrdersError:
     return OrdersError(error.http_status(), error.code, {**error.params, "field": error.field})
 
@@ -279,8 +290,14 @@ def _create_order(cart, lines, user_id, contact: Contact, address: Address,
 
 def checkout(user, *, idempotency_key, contact: Contact, address: Address,
              shipping_method: str = "", comment: str = "",
-             context: dict | None = None) -> tuple[Order, bool]:
-    """Place the caller's cart as an order. Returns ``(order, created)``."""
+             context: dict | None = None,
+             expected_total=None) -> tuple[Order, bool]:
+    """Place the caller's cart as an order. Returns ``(order, created)``.
+
+    *expected_total* (the total the shopper was shown) is compared with the
+    re-quote inside the transaction, before any hook reserves; a difference
+    refuses with ``error.409.total_changed`` and the fresh quote.
+    """
     refusal = requires_account_refusal(user)
     if refusal is not None:
         raise refusal
@@ -325,6 +342,9 @@ def checkout(user, *, idempotency_key, contact: Contact, address: Address,
                 quote = quote_lines(user, cart.currency, lines, context)
                 if quote.errors:
                     raise _refusal_from(quote.errors[0])
+                if (expected_total is not None
+                        and quote.total != money.Decimal(str(expected_total))):
+                    raise _total_changed(cart, quote)
                 if hook_names:
                     request = seams.build_request(
                         currency=cart.currency, user_id=seam_user_id(user),

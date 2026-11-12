@@ -157,6 +157,12 @@ class CheckoutRequestSerializer(serializers.Serializer):
         max_length=m.COMMENT_MAX_LENGTH, required=False, allow_blank=True, default=""
     )
     context = _context_field()
+    expected_total = _money(
+        money.ORDER_TOTAL_MAX_DIGITS, required=False, min_value=0,
+        help_text="The total the shopper was shown (cart quote). When present and the "
+                  "re-quoted total differs, checkout refuses with error.409.total_changed "
+                  "and the fresh quote. Absent: no comparison.",
+    )
 
     def validate_context(self, value):
         return _check_context(value)

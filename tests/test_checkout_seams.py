@@ -646,3 +646,72 @@ def test_a_cancel_before_an_unanswered_commit_sends_release_not_commit(
     assert len(stock.ops("commit")) == 1  # the one unanswered try, never retried
     assert [p["reason"] for p in stock.ops("release")] == ["cancelled"]
     assert CheckoutHookState.objects.get().state == HookState.RELEASED
+
+
+class TestExpectedTotal:
+    """Optional expected_total: the shopper is never charged a total they did not see."""
+
+    def test_a_matching_total_places_the_order(self, filled, installed):
+        promo_and_shipping(installed)
+        ctx = {"codes": ["SAVE10"], "delivery": {"method": "courier"}}
+        shown = filled.post(QUOTE, {"context": ctx}, format="json").json()["total"]
+        resp = filled.post(CHECKOUT, {**body(**ctx), "expected_total": shown}, format="json")
+        assert resp.status_code == 201, resp.content
+        assert resp.json()["total"] == shown == "59.00"
+
+    def test_absent_means_no_comparison(self, filled, installed):
+        promo_and_shipping(installed)
+        resp = filled.post(CHECKOUT, body(delivery={"method": "courier"}), format="json")
+        assert resp.status_code == 201
+
+    def test_a_changed_adjuster_answer_refuses_with_the_fresh_quote_before_any_reserve(
+        self, filled, installed, django_capture_on_commit_callbacks
+    ):
+        _, ship = promo_and_shipping(installed)
+        stock = installed(FakeHook("stock"))
+        ctx = {"delivery": {"method": "courier"}}
+        shown = filled.post(QUOTE, {"context": ctx}, format="json").json()["total"]
+        assert shown == "65.00"
+        ship.answer = flat_shipping("7.50")  # the rate changed between quote and submit
+        key = uuid.uuid4()
+        resp = filled.post(CHECKOUT, {**body(key, **ctx), "expected_total": shown},
+                           format="json")
+        assert resp.status_code == 409
+        envelope = resp.json()
+        assert envelope["localizable_error"] == "error.409.total_changed"
+        assert envelope["params"]["total"] == "67.50"
+        fresh = envelope["params"]["quote"]
+        assert fresh["total"] == "67.50"
+        assert [(a["kind"], a["amount"]) for a in fresh["adjustments"]] == [("shipping", "7.50")]
+        assert len(fresh["lines"]) == 2 and fresh["errors"] == []
+        assert not Order.objects.exists()
+        assert stock.ops("reserve") == [] and stock.ops("release") == []
+
+        # The same attempt key, resubmitted with the fresh total, reserves anew.
+        with django_capture_on_commit_callbacks(execute=True):
+            again = filled.post(CHECKOUT, {**body(key, **ctx), "expected_total": "67.50"},
+                                format="json")
+        assert again.status_code == 201, again.content
+        assert again.json()["total"] == "67.50"
+        assert len(stock.ops("reserve")) == 1
+        assert stock.holds[str(key)]["state"] == "committed"
+        assert CheckoutHookState.objects.get().state == HookState.COMMITTED
+
+    def test_the_fresh_quote_matches_the_declared_schema(self, filled, installed):
+        import json
+        from pathlib import Path
+
+        from .test_contract_wire import _validator
+
+        promo_and_shipping(installed)
+        resp = filled.post(CHECKOUT, {**body(delivery={"method": "c"}), "expected_total": "1.00"},
+                           format="json")
+        schema = json.loads((Path(__file__).resolve().parent.parent / "docs" / "schema.json")
+                            .read_text())
+        quote_schema = {"$ref": "#/components/schemas/CartQuoteResponse"}
+        assert _validator({**quote_schema, "components": schema["components"]}) \
+            .is_valid(resp.json()["params"]["quote"])
+
+    def test_a_malformed_expected_total_is_400(self, filled):
+        resp = filled.post(CHECKOUT, {**body(), "expected_total": "1.234"}, format="json")
+        assert resp.status_code == 400

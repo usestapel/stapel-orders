@@ -206,6 +206,7 @@ class CheckoutView(_OrdersView):
             shipping_method=data.get("shipping_method", ""),
             comment=data.get("comment", ""),
             context=data.get("context") or {},
+            expected_total=data.get("expected_total"),
         )
         return self._order_response(order, status=201 if created else 200)
 

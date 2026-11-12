@@ -2,7 +2,7 @@
 
 Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel; payment is a provider seam (none, mock) whose outcome arrives as the payment.completed fact. Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
-Contract: axes 2 · surface 23 · extension points 9 · operations 11 · error codes 59 · flows 4.
+Contract: axes 2 · surface 23 · extension points 9 · operations 11 · error codes 60 · flows 4.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -108,7 +108,7 @@ Paths are relative to `/orders/api/v1/`.
 - GET /orders/{order_id}/ — orders_orders_retrieve
 - POST /orders/{order_id}/transition/ — orders_orders_transition
 
-## Error codes (59) — the StapelError envelope
+## Error codes (60) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.bad_request [400] fix_input
 - error.400.captcha_invalid [400] retry
@@ -156,6 +156,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.409.conflict [409] fix_input
 - error.409.order_transition_invalid [409] fix_input {from,to}
 - error.409.purchasable_unavailable [409] fix_input
+- error.409.total_changed [409] retry {total}
 - error.410.gone [410] retry
 - error.413.payload_too_large [413] retry
 - error.415.unsupported_media_type [415] retry

@@ -18,6 +18,7 @@ ERR_409_CART_PRICE_CHANGED = "error.409.cart_price_changed"
 ERR_409_CART_TOO_MANY_LINES = "error.409.cart_too_many_lines"
 ERR_409_ORDER_TRANSITION_INVALID = "error.409.order_transition_invalid"
 ERR_409_CHECKOUT_HOOK_REFUSED = "error.409.checkout_hook_refused"
+ERR_409_TOTAL_CHANGED = "error.409.total_changed"
 ERR_409_CHECKOUT_ATTEMPT_CONFLICT = "error.409.checkout_attempt_conflict"
 ERR_503_PURCHASABLE_UNAVAILABLE = "error.503.purchasable_unavailable"
 ERR_503_ADJUSTER_UNAVAILABLE = "error.503.adjuster_unavailable"
@@ -36,6 +37,7 @@ STAPEL_ORDERS_ERRORS = {
     ERR_409_CART_PRICE_CHANGED: "Prices in your cart have changed; review the cart and submit again",
     ERR_409_CART_TOO_MANY_LINES: "The cart holds at most {max} different items",
     ERR_409_ORDER_TRANSITION_INVALID: "The order cannot move from {from} to {to}",
+    ERR_409_TOTAL_CHANGED: "The order total is now {total}; review it and submit again",
     ERR_409_CHECKOUT_HOOK_REFUSED: "The order cannot be placed right now; review the cart and submit again",
     ERR_409_CHECKOUT_ATTEMPT_CONFLICT: "This checkout key is already in use; start checkout again",
     ERR_503_PURCHASABLE_UNAVAILABLE: "Item details are temporarily unavailable; try again shortly",
@@ -47,6 +49,7 @@ STAPEL_ORDERS_ERRORS = {
 STAPEL_ORDERS_REMEDIATION = {
     ERR_403_CHECKOUT_REQUIRES_ACCOUNT: "reauthenticate",
     ERR_409_CART_PRICE_CHANGED: "retry",
+    ERR_409_TOTAL_CHANGED: "retry",
     ERR_503_PURCHASABLE_UNAVAILABLE: "wait_and_retry",
     ERR_503_ADJUSTER_UNAVAILABLE: "wait_and_retry",
     ERR_503_CHECKOUT_HOOK_UNAVAILABLE: "wait_and_retry",
@@ -69,6 +72,7 @@ __all__ = [
     "ERR_409_CART_TOO_MANY_LINES",
     "ERR_409_ORDER_TRANSITION_INVALID",
     "ERR_409_CHECKOUT_HOOK_REFUSED",
+    "ERR_409_TOTAL_CHANGED",
     "ERR_409_CHECKOUT_ATTEMPT_CONFLICT",
     "ERR_503_PURCHASABLE_UNAVAILABLE",
     "ERR_503_ADJUSTER_UNAVAILABLE",

@@ -87,6 +87,11 @@ the machine form.
 22. A cancel before an unanswered commit wins: the commit is not retried,
     release (`cancelled`) is sent; a late commit is the companion's no-op.
 
+23. Optional `expected_total` on checkout (orders-side only, companions
+    unaffected): compared after the adjusters, before any reserve; a
+    mismatch is `error.409.total_changed` with the fresh `total` and
+    `quote` in params, and reserves nothing.
+
 ## Wiring
 
 19. `SETTINGS_DEFAULTS` is merged by stapel-tools' scaffold only for

@@ -82,7 +82,13 @@ from the spec:
 - Response: `{"adjustments": [{"kind": "discount" | "shipping" | "tax" | "fee", "code", "label", "amount" (signed decimal string, cart currency), "line_index" | null, "meta": {}}], "errors": [{"code", "field" | null, "params": {}}]}`.
 
 Any error refuses the checkout with that code; `POST cart/quote/` returns
-them without failing. Orders re-quotes inside the checkout transaction and
+them without failing. Optional `expected_total` on checkout (decimal string, cart
+currency — the total the shopper was shown): when present and the re-quote
+inside the checkout transaction differs, checkout refuses with
+`error.409.total_changed`, `params.total` = the fresh total and
+`params.quote` = the fresh `CartQuoteResponse`. The comparison runs after
+the adjusters and BEFORE any hook reserves, so a refusal reserves nothing;
+the same attempt key resubmitted reserves anew. Absent: no comparison. Orders re-quotes inside the checkout transaction and
 snapshots `OrderAdjustment` rows; `total = max(0, subtotal + Σ amount)`.
 The readings where the spec was silent (`attrs` = the resolver's extra
 scalar fields; `user_id` null for a guest; `adjustments_so_far` items carry

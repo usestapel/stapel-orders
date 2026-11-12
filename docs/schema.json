@@ -816,6 +816,12 @@
             "type": "object",
             "additionalProperties": {},
             "description": "Opaque object for the adjusters and hooks (e.g. codes, delivery); each key is validated by the adjuster that owns it, never by orders."
+          },
+          "expected_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$",
+            "description": "The total the shopper was shown (cart quote). When present and the re-quoted total differs, checkout refuses with error.409.total_changed and the fresh quote. Absent: no comparison."
           }
         },
         "required": [

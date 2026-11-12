@@ -401,6 +401,16 @@
     "owner": "stapel_orders"
   },
   {
+    "code": "error.409.total_changed",
+    "status": 409,
+    "params": [
+      "total"
+    ],
+    "remediation": "retry",
+    "en": "The order total is now {total}; review it and submit again",
+    "owner": "stapel_orders"
+  },
+  {
     "code": "error.410.gone",
     "status": 410,
     "params": [],

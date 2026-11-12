@@ -23,6 +23,9 @@ additive fields.
   refusal); swap key `STAPEL_ORDERS_QUOTE_PRESENTER`.
 - **`context`** on `CheckoutRequest` (opaque object, ≤ 8 KB) passed to every
   adjuster and hook; checkout re-quotes inside its transaction.
+- Optional **`expected_total`** on `CheckoutRequest`: a re-quoted total that
+  differs refuses with `error.409.total_changed` (`params.total`,
+  `params.quote` = the fresh quote) before any checkout hook reserves.
 - **`OrderAdjustment`** snapshot rows; `adjustments` on `OrderResponse`
   (kind, code, label, signed amount, line_index); in the GDPR export and the
   admin.
