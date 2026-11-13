@@ -8,14 +8,15 @@
     "/orders/api/v1/cart/": {
       "get": {
         "operationId": "orders_cart_retrieve",
-        "description": "The caller's cart. Reading it makes no comm call.\n\n**Permissions:** `IsAuthenticated`",
+        "description": "The caller's cart. Reading it makes no comm call.\n\nA visitor with no session yet reads the empty cart (200, ``id: null``,\nno lines) and no row is created: the guest identity a cart belongs to is\nminted at the first add, so before it there is nothing to own. Emptying\nthe cart still needs a session.\n\n**Permissions:** `IsAuthenticatedOrReadOnly`",
         "tags": [
           "Orders"
         ],
         "security": [
           {
             "JWTCookieAuth": []
-          }
+          },
+          {}
         ],
         "responses": {
           "200": {
@@ -32,7 +33,7 @@
       },
       "delete": {
         "operationId": "orders_cart_clear",
-        "description": "The caller's cart. Reading it makes no comm call.\n\n**Permissions:** `IsAuthenticated`",
+        "description": "The caller's cart. Reading it makes no comm call.\n\nA visitor with no session yet reads the empty cart (200, ``id: null``,\nno lines) and no row is created: the guest identity a cart belongs to is\nminted at the first add, so before it there is nothing to own. Emptying\nthe cart still needs a session.\n\n**Permissions:** `IsAuthenticatedOrReadOnly`",
         "tags": [
           "Orders"
         ],

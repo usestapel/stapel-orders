@@ -70,15 +70,23 @@ class _OrdersView(StapelAPIView):
 
 @extend_schema(tags=TAGS)
 class CartView(_OrdersView):
-    """The caller's cart. Reading it makes no comm call."""
+    """The caller's cart. Reading it makes no comm call.
 
-    permission_classes = [permissions.IsAuthenticated]
+    A visitor with no session yet reads the empty cart (200, ``id: null``,
+    no lines) and no row is created: the guest identity a cart belongs to is
+    minted at the first add, so before it there is nothing to own. Emptying
+    the cart still needs a session.
+    """
+
+    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
     stapel_anonymous_access = ANONYMOUS_ALLOWED
     response_serializer_class = CartResponseSerializer
 
     @extend_schema(operation_id="orders_cart_retrieve", responses={200: CartResponseSerializer})
     @flow_step(CART, order=1, note="Read the cart (zero calls to the product owner)")
     def get(self, request):
+        if not request.user.is_authenticated:
+            return self._cart_response(None)
         return self._cart_response(cart_service.get_cart(self._user_id(request)))
 
     @extend_schema(operation_id="orders_cart_clear", responses={200: CartResponseSerializer})

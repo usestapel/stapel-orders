@@ -30,8 +30,29 @@ class TestRead:
         assert body["id"] is None
         assert not Cart.objects.exists()  # a read never writes
 
-    def test_unauthenticated_is_refused(self, api_client, catalog):
-        assert api_client.get(CART).status_code in (401, 403)
+    def test_visitor_with_no_session_reads_the_empty_cart(self, api_client, catalog):
+        resp = api_client.get(CART)
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["id"] is None
+        assert body["lines"] == []
+        assert body["line_count"] == 0
+        assert body["total"] == "0.00"
+        assert not Cart.objects.exists()  # a read never writes
+
+    def test_cold_read_matches_a_guest_before_the_first_add(
+        self, api_client, client_for, guest, catalog
+    ):
+        cold = api_client.get(CART).json()
+        assert client_for(guest).get(CART).json() == cold
+        assert not Cart.objects.exists()
+
+    def test_visitor_with_no_session_cannot_write(self, api_client, catalog):
+        catalog.put("a")
+        assert api_client.delete(CART).status_code in (401, 403)
+        assert add(api_client, "a").status_code in (401, 403)
+        assert api_client.post(f"{CART}quote/", {}, format="json").status_code in (401, 403)
+        assert not Cart.objects.exists()
 
     def test_guest_session_has_a_cart(self, client_for, guest, catalog):
         catalog.put("a")

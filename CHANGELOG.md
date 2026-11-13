@@ -4,6 +4,15 @@ All notable changes to stapel-orders are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
+## [0.2.1] — 2026-11-13
+
+### Fixed
+- `GET /cart/` answers a visitor with no session (no guest identity yet)
+  with 200 and the empty cart (`id: null`, no lines) instead of 401, so a
+  storefront's cart page and badge load for a first-time visitor. No cart row
+  is created. The response is the same one a guest gets before its first add.
+  Every write (`DELETE /cart/`, lines, quote, checkout) still needs a session.
+
 ## [0.2.0] — 2026-11-13
 
 Checkout seams for commerce companions (promotions, delivery, inventory).
