@@ -68,6 +68,14 @@ class _OrdersView(StapelAPIView):
         return self.serialized_response(get_order_presenter()().present(order), status=status)
 
 
+class CartReadOpen(permissions.IsAuthenticatedOrReadOnly):
+    """Reading the cart needs no session; emptying it does.
+
+    Not ``ReadOnlyOrStaff``: a shopper writes their own cart, staff are not
+    involved. A visitor without a session reads the empty cart.
+    """
+
+
 @extend_schema(tags=TAGS)
 class CartView(_OrdersView):
     """The caller's cart. Reading it makes no comm call.
@@ -78,11 +86,16 @@ class CartView(_OrdersView):
     the cart still needs a session.
     """
 
-    permission_classes = [permissions.IsAuthenticatedOrReadOnly]
+    permission_classes = [CartReadOpen]
     stapel_anonymous_access = ANONYMOUS_ALLOWED
     response_serializer_class = CartResponseSerializer
 
-    @extend_schema(operation_id="orders_cart_retrieve", responses={200: CartResponseSerializer})
+    @extend_schema(
+        operation_id="orders_cart_retrieve",
+        responses={200: CartResponseSerializer},
+        # The session is optional here: none reads the empty cart.
+        auth=[{"JWTCookieAuth": []}, {}],
+    )
     @flow_step(CART, order=1, note="Read the cart (zero calls to the product owner)")
     def get(self, request):
         if not request.user.is_authenticated:
