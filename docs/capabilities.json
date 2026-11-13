@@ -1,6 +1,6 @@
 {
   "module": "stapel-orders",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "provides": "Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel and a full staff refund; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.",
   "axes": [
     {

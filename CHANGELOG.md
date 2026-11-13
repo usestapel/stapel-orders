@@ -4,11 +4,30 @@ All notable changes to stapel-orders are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 Pre-1.0 semver: **minor = breaking**, patch = compatible.
 
-## [Unreleased] — proposed 0.2.0
+## [0.2.0] — 2026-11-13
 
 Checkout seams for commerce companions (promotions, delivery, inventory).
 With nothing registered, behaviour and API output are those of 0.1.0 plus
 additive fields.
+
+### Breaking (pre-1.0 minor)
+- The `mock` payment provider no longer emits `payment.completed`; it emits
+  `orders.payment.completed` (`simulated: true`). Anything that listened to
+  the mock's `payment.completed` must read `orders.payment.completed` or
+  `orders.order.paid`. A host `PAYMENT` provider should do the same (see
+  Deprecated).
+- Orders no longer subscribes to `payment.completed` / `user.merged` with a
+  `schema=`: next to stapel-billing, billing's own schema is the only one in
+  force for `payment.completed`.
+- Checkout-hook `commit` payloads send `user_id: null` for a guest (the
+  acting account is in the new `actor_id`); `release` gains `user_id`.
+- Migrations `0002`–`0004` add tables and columns (`OrderAdjustment`,
+  `CheckoutHookState`, status `refunded`, `address_from_delivery`); run
+  `migrate`.
+- Upgrading a service that runs stapel-orders 0.1.0 with
+  `STAPEL_ORDERS["PAYMENT"] = "mock"` next to stapel-billing to
+  stapel-core 0.96 refuses every checkout; upgrade orders to 0.2.0 first or
+  together with core.
 
 ### Added
 - **`ADJUSTERS`** merge registry (`{name: {"quote", "order"}}`, empty by
