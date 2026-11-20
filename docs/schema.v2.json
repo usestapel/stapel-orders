@@ -1,0 +1,1569 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "",
+    "version": "0.0.0",
+    "x-stapel-contract": 2
+  },
+  "paths": {
+    "/orders/api/v1/cart/": {
+      "get": {
+        "operationId": "orders_cart_retrieve",
+        "description": "The caller's cart. Reading it makes no comm call.\n\nA visitor with no session yet reads the empty cart (200, ``id: null``,\nno lines) and no row is created: the guest identity a cart belongs to is\nminted at the first add, so before it there is nothing to own. Emptying\nthe cart still needs a session.\n\n**Permissions:** `CartReadOpen`",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {}
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "x-stapel-flows": [
+          "orders.cart"
+        ]
+      },
+      "delete": {
+        "operationId": "orders_cart_clear",
+        "description": "The caller's cart. Reading it makes no comm call.\n\nA visitor with no session yet reads the empty cart (200, ``id: null``,\nno lines) and no row is created: the guest identity a cart belongs to is\nminted at the first add, so before it there is nothing to own. Emptying\nthe cart still needs a session.\n\n**Permissions:** `CartReadOpen`",
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "x-stapel-flows": [
+          "orders.cart"
+        ]
+      }
+    },
+    "/orders/api/v1/cart/lines/": {
+      "post": {
+        "operationId": "orders_cart_lines_create",
+        "description": "Add a purchasable to the cart (re-priced by its resolver).\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CartLineAddRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.purchasable_type_unknown",
+              "error.400.purchasable_unknown"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.cart_currency_mismatch",
+              "error.409.cart_too_many_lines",
+              "error.409.purchasable_unavailable"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.purchasable_unavailable"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.cart"
+        ]
+      }
+    },
+    "/orders/api/v1/cart/lines/{line_id}/": {
+      "patch": {
+        "operationId": "orders_cart_lines_update",
+        "description": "Change or remove one line of the caller's cart.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/PatchedCartLineUpdateRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.cart_line_not_found"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.cart"
+        ]
+      },
+      "delete": {
+        "operationId": "orders_cart_lines_destroy",
+        "description": "Change or remove one line of the caller's cart.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "line_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.cart_line_not_found"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.cart"
+        ]
+      }
+    },
+    "/orders/api/v1/cart/quote/": {
+      "post": {
+        "operationId": "orders_cart_quote",
+        "description": "Price the cart through the ADJUSTERS with the client's ``context``.\n\nNever fails on an adjuster's refusal: errors come back in ``errors`` (the\nsame ones checkout would refuse with). Asks no purchasable resolver.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CartQuoteRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CartQuoteResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.checkout_context_too_large"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.adjuster_unavailable"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.purchase"
+        ]
+      }
+    },
+    "/orders/api/v1/checkout/": {
+      "post": {
+        "operationId": "orders_checkout_create",
+        "description": "Turn the cart into an order. Idempotent on ``idempotency_key``.\n\nGuests are admitted by the class gate on purpose: whether a guest may\ncheck out is ``CHECKOUT_REQUIRES_ACCOUNT``, enforced in the body.\n\n**Permissions:** `IsAuthenticated`",
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/CheckoutRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "201": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Bad Request",
+            "x-stapel-errors": [
+              "error.400.cart_empty",
+              "error.400.checkout_context_too_large"
+            ]
+          },
+          "403": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Forbidden",
+            "x-stapel-errors": [
+              "error.403.checkout_requires_account"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.cart_currency_mismatch",
+              "error.409.cart_price_changed",
+              "error.409.checkout_attempt_conflict",
+              "error.409.checkout_hook_refused",
+              "error.409.purchasable_unavailable",
+              "error.409.total_changed"
+            ]
+          },
+          "503": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Service Unavailable",
+            "x-stapel-errors": [
+              "error.503.adjuster_unavailable",
+              "error.503.checkout_hook_unavailable",
+              "error.503.purchasable_unavailable"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.purchase"
+        ]
+      }
+    },
+    "/orders/api/v1/orders/": {
+      "get": {
+        "operationId": "orders_orders_list",
+        "description": "The caller's orders, newest first, anchor-paginated.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "anchor",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Order id to continue after (exclusive)."
+          },
+          {
+            "in": "query",
+            "name": "direction",
+            "schema": {
+              "type": "string",
+              "enum": [
+                "center",
+                "next",
+                "prev"
+              ]
+            },
+            "description": "Walk direction from the anchor."
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "schema": {
+              "type": "integer"
+            },
+            "description": "Page size, default 20, max 100."
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "schema": {
+              "type": "array",
+              "items": {
+                "type": "string",
+                "enum": [
+                  "cancelled",
+                  "completed",
+                  "confirmed",
+                  "needs_review",
+                  "new",
+                  "refunded",
+                  "shipped"
+                ]
+              }
+            },
+            "description": "Filter by status (repeatable)."
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderPage"
+                }
+              }
+            },
+            "description": ""
+          }
+        },
+        "x-stapel-flows": [
+          "orders.history"
+        ],
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items",
+          "params": [
+            "anchor",
+            "direction",
+            "limit"
+          ]
+        }
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/": {
+      "get": {
+        "operationId": "orders_orders_retrieve",
+        "description": "One of the caller's orders; a foreign id is a 404 like an absent one.\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.order_not_found"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.history"
+        ]
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/cancel/": {
+      "post": {
+        "operationId": "orders_orders_cancel",
+        "description": "The buyer cancels while the status allows it (OWNER_CANCELLABLE_STATUSES).\n\n**Permissions:** `IsAuthenticated`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.order_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.order_transition_invalid"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.history"
+        ]
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/refund/": {
+      "post": {
+        "operationId": "orders_orders_refund",
+        "description": "Staff refund a paid order in full (partial refunds are not built).\n\nThe PAYMENT provider refunds first; then status and payment_status become\n``refunded``, the checkout hooks release (reason ``cancelled``) and\n``orders.order.refunded`` is emitted. Idempotent: a refunded order is\nanswered as it is. A cancelled order is not refundable here.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderRefundRequest"
+              }
+            }
+          }
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.order_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.order_not_refundable",
+              "error.409.order_transition_invalid",
+              "error.409.refund_unsupported"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.fulfilment"
+        ]
+      }
+    },
+    "/orders/api/v1/orders/{order_id}/transition/": {
+      "post": {
+        "operationId": "orders_orders_transition",
+        "description": "Staff move an order along the lifecycle.\n\n**Permissions:** `IsStaffUser`",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "order_id",
+            "schema": {
+              "type": "integer"
+            },
+            "required": true
+          }
+        ],
+        "tags": [
+          "Orders"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            },
+            "application/x-www-form-urlencoded": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            },
+            "multipart/form-data": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderTransitionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "security": [
+          {
+            "JWTCookieAuth": []
+          },
+          {
+            "JWTBearerAuth": []
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OrderResponse"
+                }
+              }
+            },
+            "description": ""
+          },
+          "404": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Not Found",
+            "x-stapel-errors": [
+              "error.404.order_not_found"
+            ]
+          },
+          "409": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StapelError"
+                }
+              }
+            },
+            "description": "Conflict",
+            "x-stapel-errors": [
+              "error.409.order_not_refundable",
+              "error.409.order_transition_invalid",
+              "error.409.refund_unsupported"
+            ]
+          }
+        },
+        "x-stapel-flows": [
+          "orders.fulfilment"
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AddressSnapshot": {
+        "type": "object",
+        "properties": {
+          "line1": {
+            "type": "string",
+            "maxLength": 200
+          },
+          "line2": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          },
+          "city": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "region": {
+            "type": "string",
+            "default": "",
+            "maxLength": 100
+          },
+          "postal_code": {
+            "type": "string",
+            "default": "",
+            "maxLength": 20
+          },
+          "country": {
+            "type": "string",
+            "maxLength": 2,
+            "minLength": 2,
+            "pattern": "^[A-Za-z]{2}$"
+          }
+        },
+        "required": [
+          "city",
+          "country",
+          "line1"
+        ]
+      },
+      "Adjustment": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "$ref": "#/components/schemas/AdjustmentKindEnum"
+          },
+          "code": {
+            "type": "string",
+            "maxLength": 64
+          },
+          "label": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "amount": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "line_index": {
+            "type": "integer",
+            "minimum": 0,
+            "nullable": true
+          }
+        },
+        "required": [
+          "amount",
+          "code",
+          "kind",
+          "label",
+          "line_index"
+        ]
+      },
+      "AdjustmentKindEnum": {
+        "enum": [
+          "discount",
+          "shipping",
+          "tax",
+          "fee"
+        ],
+        "type": "string",
+        "description": "* `discount` - Discount\n* `shipping` - Shipping\n* `tax` - Tax\n* `fee` - Fee"
+      },
+      "CartLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit_price": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3
+          },
+          "line_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "seller_id": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64
+          },
+          "attrs": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Resolver fields beyond the purchasables contract (string, number, bool or null values), snapshotted with the line: what adjusters and checkout hooks receive as lines[].attrs, e.g. weight_grams for a delivery quote."
+          }
+        },
+        "required": [
+          "attrs",
+          "currency",
+          "id",
+          "image",
+          "line_total",
+          "purchasable_key",
+          "purchasable_type",
+          "quantity",
+          "seller_id",
+          "title",
+          "unit_price",
+          "url"
+        ]
+      },
+      "CartLineAddRequest": {
+        "type": "object",
+        "properties": {
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "maximum": 2147483647,
+            "minimum": 1,
+            "default": 1
+          }
+        },
+        "required": [
+          "purchasable_key",
+          "purchasable_type"
+        ]
+      },
+      "CartQuoteRequest": {
+        "type": "object",
+        "properties": {
+          "context": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Opaque object for the adjusters and hooks (e.g. codes, delivery); each key is validated by the adjuster that owns it, never by orders."
+          }
+        }
+      },
+      "CartQuoteResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 3
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            }
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Adjustment"
+            }
+          },
+          "errors": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/QuoteError"
+            }
+          }
+        },
+        "required": [
+          "adjustments",
+          "currency",
+          "errors",
+          "id",
+          "line_count",
+          "lines",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
+      "CartResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer",
+            "nullable": true
+          },
+          "currency": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 3
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CartLine"
+            }
+          },
+          "line_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time",
+            "nullable": true
+          }
+        },
+        "required": [
+          "currency",
+          "id",
+          "line_count",
+          "lines",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
+      "CheckoutRequest": {
+        "type": "object",
+        "properties": {
+          "idempotency_key": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactSnapshot"
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "shipping_method": {
+            "type": "string",
+            "default": "",
+            "maxLength": 32
+          },
+          "comment": {
+            "type": "string",
+            "default": "",
+            "maxLength": 500
+          },
+          "context": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Opaque object for the adjusters and hooks (e.g. codes, delivery); each key is validated by the adjuster that owns it, never by orders."
+          },
+          "expected_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$",
+            "description": "The total the shopper was shown (cart quote). When present and the re-quoted total differs, checkout refuses with error.409.total_changed and the fresh quote. Absent: no comparison."
+          }
+        },
+        "required": [
+          "contact",
+          "idempotency_key",
+          "shipping_address"
+        ]
+      },
+      "ContactSnapshot": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "maxLength": 120
+          },
+          "phone": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "email": {
+            "type": "string",
+            "default": "",
+            "maxLength": 254
+          }
+        },
+        "required": [
+          "name",
+          "phone"
+        ]
+      },
+      "OrderLine": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "purchasable_type": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "purchasable_key": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "title": {
+            "type": "string",
+            "maxLength": 255
+          },
+          "quantity": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "unit_price": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,10}(?:\\.\\d{0,2})?$"
+          },
+          "line_total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,14}(?:\\.\\d{0,2})?$"
+          },
+          "image": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "url": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 500
+          },
+          "seller_id": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 64
+          }
+        },
+        "required": [
+          "id",
+          "image",
+          "line_total",
+          "purchasable_key",
+          "purchasable_type",
+          "quantity",
+          "seller_id",
+          "title",
+          "unit_price",
+          "url"
+        ]
+      },
+      "OrderPage": {
+        "type": "object",
+        "description": "The AnchorPagination envelope ``GET orders/`` returns (schema only —\nthe view's paginator builds the body).",
+        "properties": {
+          "items": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderResponse"
+            }
+          },
+          "next_anchor": {
+            "type": "integer",
+            "nullable": true
+          },
+          "prev_anchor": {
+            "type": "integer",
+            "nullable": true
+          },
+          "has_next": {
+            "type": "boolean"
+          },
+          "has_prev": {
+            "type": "boolean"
+          },
+          "count": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "count",
+          "has_next",
+          "has_prev",
+          "items",
+          "next_anchor",
+          "prev_anchor"
+        ],
+        "x-stapel-pagination": {
+          "style": "anchor",
+          "items": "items"
+        }
+      },
+      "OrderRefundRequest": {
+        "type": "object",
+        "properties": {
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          }
+        }
+      },
+      "OrderResponse": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "integer"
+          },
+          "number": {
+            "type": "string",
+            "maxLength": 16
+          },
+          "status": {
+            "$ref": "#/components/schemas/OrderStatusEnum"
+          },
+          "payment_status": {
+            "$ref": "#/components/schemas/PaymentStatusEnum"
+          },
+          "currency": {
+            "type": "string",
+            "maxLength": 3
+          },
+          "subtotal": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "total": {
+            "type": "string",
+            "format": "decimal",
+            "pattern": "^-?\\d{0,16}(?:\\.\\d{0,2})?$"
+          },
+          "lines": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/OrderLine"
+            }
+          },
+          "adjustments": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Adjustment"
+            }
+          },
+          "contact": {
+            "$ref": "#/components/schemas/ContactSnapshot"
+          },
+          "shipping_address": {
+            "$ref": "#/components/schemas/AddressSnapshot"
+          },
+          "address_from_delivery": {
+            "type": "boolean",
+            "description": "True when the order was placed with a delivery key in the checkout context: the delivery companion's address is the authoritative one for fulfilment; shipping_address is the shopper's copy, never compared."
+          },
+          "shipping_method": {
+            "type": "string",
+            "maxLength": 32
+          },
+          "comment": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "created_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "cancellable": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "address_from_delivery",
+          "adjustments",
+          "cancellable",
+          "comment",
+          "contact",
+          "created_at",
+          "currency",
+          "id",
+          "lines",
+          "number",
+          "payment_status",
+          "shipping_address",
+          "shipping_method",
+          "status",
+          "subtotal",
+          "total",
+          "updated_at"
+        ]
+      },
+      "OrderStatusEnum": {
+        "enum": [
+          "new",
+          "confirmed",
+          "shipped",
+          "completed",
+          "cancelled",
+          "needs_review",
+          "refunded"
+        ],
+        "type": "string",
+        "description": "* `new` - New\n* `confirmed` - Confirmed\n* `shipped` - Shipped\n* `completed` - Completed\n* `cancelled` - Cancelled\n* `needs_review` - Needs review\n* `refunded` - Refunded"
+      },
+      "OrderTransitionRequest": {
+        "type": "object",
+        "properties": {
+          "to": {
+            "$ref": "#/components/schemas/OrderStatusEnum"
+          },
+          "reason": {
+            "type": "string",
+            "default": "",
+            "maxLength": 200
+          }
+        },
+        "required": [
+          "to"
+        ]
+      },
+      "PatchedCartLineUpdateRequest": {
+        "type": "object",
+        "properties": {
+          "quantity": {
+            "type": "integer",
+            "maximum": 2147483647,
+            "minimum": 0
+          }
+        }
+      },
+      "PaymentStatusEnum": {
+        "enum": [
+          "unpaid",
+          "pending",
+          "paid",
+          "refunded"
+        ],
+        "type": "string",
+        "description": "* `unpaid` - Unpaid\n* `pending` - Pending\n* `paid` - Paid\n* `refunded` - Refunded"
+      },
+      "QuoteError": {
+        "type": "object",
+        "properties": {
+          "code": {
+            "type": "string",
+            "maxLength": 128
+          },
+          "field": {
+            "type": "string",
+            "nullable": true,
+            "maxLength": 128
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {}
+          }
+        },
+        "required": [
+          "code",
+          "field",
+          "params"
+        ]
+      },
+      "StapelError": {
+        "type": "object",
+        "description": "Structured error returned by all Stapel API endpoints.",
+        "properties": {
+          "localizable_error": {
+            "type": "string",
+            "description": "Translation key for client-side localization",
+            "example": "error.404.not_found"
+          },
+          "error": {
+            "type": "string",
+            "description": "Human-readable fallback/debug message — not reliably English,"
+          },
+          "params": {
+            "type": "object",
+            "additionalProperties": {},
+            "description": "Context values for template placeholders",
+            "example": {
+              "retry_after": 30
+            }
+          },
+          "error_language": {
+            "type": "string",
+            "description": "The language `error` is written in (e.g. 'en', 'ru'),"
+          }
+        },
+        "required": [
+          "error",
+          "localizable_error"
+        ]
+      }
+    },
+    "securitySchemes": {
+      "JWTBearerAuth": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT",
+        "description": "JWT access token in the `Authorization: Bearer <token>` header — the credential a native client sends. When the JWT cookie is also present, the cookie wins."
+      },
+      "JWTCookieAuth": {
+        "type": "apiKey",
+        "in": "cookie",
+        "name": "stapel_jwt",
+        "description": "JWT token stored in cookie. Login via /auth/admin/ to get the cookie."
+      }
+    }
+  }
+}

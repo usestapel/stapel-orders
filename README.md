@@ -24,13 +24,13 @@ pip install stapel-orders
 
 | Fact | Value |
 |---|---|
-| Version | `0.2.1` |
+| Version | `0.2.2` |
 | Python | `>=3.11` (3.11, 3.12, 3.13, 3.14) |
 | HTTP operations | 12 |
 | Config axes | 2 |
 | Usage surface | 24 |
 | Extension points | 9 |
-| Error codes | 63 |
+| Error codes | 64 |
 | Documented flows | 4 |
 | Fleet dependencies | [`stapel-auth`](https://github.com/usestapel/stapel-auth) (optional) · [`stapel-core`](https://github.com/usestapel/stapel-core) · [`stapel-currencies`](https://github.com/usestapel/stapel-currencies) (optional) · [`stapel-delivery`](https://github.com/usestapel/stapel-delivery) (optional) · [`stapel-inventory`](https://github.com/usestapel/stapel-inventory) (optional) · [`stapel-listings`](https://github.com/usestapel/stapel-listings) (optional) · [`stapel-promotions`](https://github.com/usestapel/stapel-promotions) (optional) |
 

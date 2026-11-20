@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "stapel-orders"
-version = "0.2.1"
+version = "0.2.2"
 description = "Cart, checkout and orders for the Stapel framework"
 readme = "README.md"
 license = { text = "MIT" }
@@ -24,7 +24,7 @@ classifiers = [
     "Typing :: Typed",
 ]
 dependencies = [
-    "stapel-core>=0.95.0,<1.0",
+    "stapel-core>=0.99.3,<1.0",
 ]
 
 [project.urls]
@@ -47,7 +47,7 @@ test = [
     "pytest-django",
     "pytest-cov",
     # contract emission + llms.txt/README generation (tests/test_contract.py)
-    "stapel-tools>=0.76.0,<1",
+    "stapel-tools>=0.84.0,<1",
     # the wire gate validates bodies; core's VALIDATE_SCHEMAS needs it too
     "jsonschema>=4",
     # owner of payment.completed: tests/test_billing_seam.py walks orders'

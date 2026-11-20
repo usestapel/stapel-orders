@@ -1,8 +1,8 @@
-# stapel-orders 0.2.1
+# stapel-orders 0.2.2
 
 Cart, checkout and orders over opaque purchasables. A host registers what can be bought (purchasable_type -> a keyed-batch resolver Function answering title, price, currency, availability); the cart snapshots each line when it is added, so reading a cart never calls the product owner. Checkout re-prices every line, refuses with the refreshed cart when anything drifted, and places an order idempotently on a client key, emptying the cart and announcing orders.order.placed with its lines. Orders follow a staff-driven lifecycle with buyer cancel and a full staff refund; payment is a provider seam (none, mock) whose outcome arrives as the orders.payment.completed fact (or the payment module's payment.completed). Checkout seams let commerce companions plug in without forking: ADJUSTERS price the cart (discounts, shipping, tax; a quote endpoint shows them before submit, order adjustments are snapshotted) and CHECKOUT_HOOKS reserve before the order is written, commit once it is placed and release on failure or cancel.
 
-Contract: axes 2 · surface 24 · extension points 9 · operations 12 · error codes 63 · flows 4.
+Contract: axes 2 · surface 24 · extension points 9 · operations 12 · error codes 64 · flows 4.
 Generated from docs/capabilities.json by `stapel-llms-txt` — do not edit; drift-gated by `make contract-check`.
 
 ## Configuration axes — what a product switches on
@@ -111,7 +111,7 @@ Paths are relative to `/orders/api/v1/`.
 - GET /orders/{order_id}/ — orders_orders_retrieve
 - POST /orders/{order_id}/transition/ — orders_orders_transition
 
-## Error codes (63) — the StapelError envelope
+## Error codes (64) — the StapelError envelope
 Render `t(code, params)`; branch UX on the remediation. Localized text lives in docs/errors.<lang>.md, not here.
 - error.400.bad_request [400] fix_input
 - error.400.captcha_invalid [400] retry
@@ -134,6 +134,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.400.purchasable_type_unknown [400] fix_input
 - error.400.purchasable_unknown [400] fix_input
 - error.400.shipping_address_required [400] fix_input
+- error.400.too_many_ids [400] fix_input {requested,limit}
 - error.400.validation_error [400] fix_input
 - error.400.verification_failed [400] verify
 - error.400.verification_invalid_factor [400] verify
@@ -169,7 +170,7 @@ Render `t(code, params)`; branch UX on the remediation. Localized text lives in 
 - error.422.unprocessable_entity [422] wait_and_retry
 - error.423.locked [423] wait_and_retry
 - error.423.verification_locked [423] wait_and_retry
-- error.429.rate_limit [429] wait_and_retry {retry_after_minutes}
+- error.429.rate_limit [429] wait_and_retry {retry_after_display,retry_after,retry_after_minutes}
 - error.429.too_many_requests [429] wait_and_retry
 - error.500.internal [500] contact_support
 - error.503.adjuster_unavailable [503] wait_and_retry
