@@ -61,7 +61,7 @@ jobs:
       # docs/errors.json).
       - name: The suite declares its own siblings (stapel-sibling-lint)
         run: |
-          pip install "stapel-tools>=0.84.0,<1" --quiet
+          pip install "stapel-tools>=0.86.0,<1" --quiet
           stapel-sibling-lint .
 
       - name: Fleet gates (stapel-verify arsenal, migrations, outbox atomicity)
